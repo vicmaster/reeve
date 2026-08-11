@@ -41,19 +41,38 @@ diligence rather than a leak.
 It is nonetheless the same class of disclosure that motivated purging `PROJECT-BRIEF.md`
 from history, so consistency argues for removing it too.
 
-**Status: OPEN — the maintainer's decision.** Removing it means rewriting the history of
-two already-pushed public branches and force-pushing, which is outward-facing and cannot
-be undone for anyone who has already cloned. Not to be done without an explicit
-instruction. The options:
+**Status: RESOLVED in git, with one residual noted below.** On the maintainer's
+instruction (2026-08-11) the names were redacted from history:
 
-1. **Purge and force-push** — `git filter-branch`/`filter-repo` over the one file, as was
-   done for the brief, then force-push `main` and `001-guardrails-core`. Consistent with
-   the earlier decision; invalidates existing clones and any commit SHAs referenced
-   elsewhere.
-2. **Leave it** — the current tree is clean, no proprietary material was ever committed,
-   and the naming is a diligence note rather than a disclosure of substance.
+- Every historical blob was rewritten: the possessive phrase became "any employer or
+  client codebase", the bare employer name became "an employer", and an early gemspec
+  carrying a work email had it replaced with the maintainer's personal address. The
+  redacted sentences still read correctly at each historical commit.
+- Backup refs were dropped, the reflog expired and the object store repacked, then every
+  remaining object was scanned: no blob contains the employer name, and none contains the
+  product name as a whole word.
+- `main`, `001-guardrails-core` and the `kernel-frozen` tag were force-pushed. Every
+  commit SHA from before the rewrite is therefore obsolete; the tag now points at the
+  rewritten kernel commit.
+- A full backup of the pre-rewrite history is kept outside the repository, so nothing was
+  destroyed irrecoverably.
 
-Until this is decided, Principle V's publication gate is **not** signed off.
+**Residual: GitHub still serves the old objects by SHA.** A force-push makes the old
+commits unreachable, but GitHub retains unreachable objects until it garbage-collects, and
+until then anyone holding an old commit or blob SHA can still fetch it through the API or
+the web UI. Verified as still resolvable immediately after the push. Two ways to finish
+the job, both the maintainer's call:
+
+1. **Ask GitHub Support to garbage-collect the repository** — the documented remedy for
+   removing sensitive data, and it keeps the repository's identity, history of issues and
+   any external links intact.
+2. **Delete and recreate the repository**, pushing only the rewritten history. Immediate
+   and complete. Cheap here specifically: at the time of writing the repository has 0
+   stars, 0 forks, 0 watchers and no issues or pull requests, so nothing is lost but the
+   creation date.
+
+Until one of those is done, treat the redaction as complete for anyone browsing the
+repository normally, and incomplete against anyone who already recorded a SHA.
 
 ## Everything else: PASS
 
