@@ -17,7 +17,12 @@ module Reeve
         @mutex = Mutex.new
       end
 
+      # The DSL's `guard_with`. Declaring twice on one class is a mistake worth naming;
+      # `add` is the quiet path used by `redact` and by inheritance, which refine an
+      # existing declaration rather than compete with it.
       def register(tool_class:, policy:, action: nil, redacted_arguments: [])
+        warn_about_redeclaration_of(tool_class)
+
         declaration = Declaration.new(
           tool_class: tool_class,
           policy: policy,
@@ -29,7 +34,6 @@ module Reeve
 
       def add(declaration)
         @mutex.synchronize do
-          warn_about_redeclaration(declaration) if @declarations.key?(declaration.tool_class)
           @declarations[declaration.tool_class] = declaration
           @name_index = nil
           declaration
@@ -65,6 +69,15 @@ module Reeve
         @declarations.empty?
       end
 
+      # Forgets one tool. Test suites build throwaway tools, and the compliance suite
+      # walks this registry — a fixture left behind fails a later, unrelated example.
+      def remove(tool_class)
+        @mutex.synchronize do
+          @declarations.delete(tool_class)
+          @name_index = nil
+        end
+      end
+
       def reset!
         @mutex.synchronize do
           @declarations = {}
@@ -80,8 +93,10 @@ module Reeve
         end
       end
 
-      def warn_about_redeclaration(declaration)
-        message = "reeve: #{declaration.tool_class} declared guard_with more than once; " \
+      def warn_about_redeclaration_of(tool_class)
+        return unless @declarations.key?(tool_class)
+
+        message = "reeve: #{tool_class} declared guard_with more than once; " \
                   "the later declaration replaces the earlier one"
         logger = Reeve.config.logger
         logger ? logger.warn(message) : Kernel.warn(message)

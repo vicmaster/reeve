@@ -58,6 +58,21 @@ RSpec.describe Reeve::Authorization::Registry do
     end
   end
 
+  it "does not cry redeclaration when a declaration is merely updated" do
+    # `redact` after `guard_with` replaces the stored declaration with a wider one. That
+    # is one declaration being refined, not two competing ones, and warning about it
+    # trains people to ignore the warning that matters.
+    klass = tool_class
+    declaration = registry.register(tool_class: klass, policy: policy)
+
+    logger = CapturingLogger.new
+    Reeve.configure { |c| c.logger = logger }
+    registry.add(declaration.with(redacted_arguments: [:ssn]))
+
+    expect(logger.warnings).to be_empty
+    expect(registry.for_class(klass).redacted_arguments).to eq([:ssn])
+  end
+
   describe "#guard_for" do
     it "finds a declaration by tool name — the name the envelope has" do
       klass = tool_class { def self.tool_name = "invoice_search" }
@@ -112,6 +127,27 @@ RSpec.describe Reeve::Authorization::Registry do
     it "starts empty" do
       expect(registry.to_a).to be_empty
       expect(registry).to be_empty
+    end
+  end
+
+  describe "#remove" do
+    # A host that builds a throwaway tool inside one test needs it gone before the
+    # compliance suite, which walks the whole registry, runs against it.
+    it "forgets one tool without disturbing the others" do
+      keep = tool_class("KeepTool")
+      drop = tool_class("DropTool")
+      registry.register(tool_class: keep, policy: policy)
+      registry.register(tool_class: drop, policy: policy)
+
+      registry.remove(drop)
+
+      expect(registry.for_class(drop)).to be_nil
+      expect(registry.guard_for("drop_tool")).to be_nil
+      expect(registry.for_class(keep)).not_to be_nil
+    end
+
+    it "is quiet about a tool it never knew" do
+      expect { registry.remove(tool_class("NeverTool")) }.not_to raise_error
     end
   end
 

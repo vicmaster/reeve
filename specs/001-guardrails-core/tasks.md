@@ -230,9 +230,9 @@ fixtures; green on the first, red with the right message on each of the others.
       `lib/reeve/fast_mcp.rb` opt-in entry point
 - [x] T059 [US4] `lib/generators/reeve/install/install_generator.rb` + initializer
       template
-- [ ] T060 [US4] Build `spec/dummy` — minimal Rails app, two principals, shared record set,
+- [x] T060 [US4] Build `spec/dummy` — minimal Rails app, two principals, shared record set,
       three tools (relation-returning, single-record, aggregate via `scoped`)
-- [ ] T061 [US4] End-to-end integration spec walking the quickstart exactly as written
+- [x] T061 [US4] End-to-end integration spec walking the quickstart exactly as written
       (SC-004, SC-005)
 
 **Checkpoint**: the quickstart is executable, not aspirational.
