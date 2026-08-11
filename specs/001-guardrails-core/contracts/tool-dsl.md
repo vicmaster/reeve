@@ -70,10 +70,46 @@ guides toward the safe path instead of documenting it.
 |---------------------|-------------------|
 | ActiveRecord::Relation | Merged with the policy scope before execution; scoped relation is returned |
 | Array of records | Each re-checked against the scope; out-of-scope entries removed |
-| A single record | Denied with `out_of_scope_record` if not in scope — never returned, never differentiated from "not found" (FR-006) |
+| A single record | Denied with `out_of_scope_record` if not in scope — never returned. See the existence-disclosure note below |
 | Mixed record types | Each type scoped by its own policy; an unpoliced type denies the whole call |
 | Anything else (count, sum, string, hash) | Allowed only if `scoped(...)` was used during the call; otherwise denied with `unscoped_derived_result` |
 | `nil` / empty | Allowed, recorded with `record_count: 0` — distinct from a denial |
+
+## Fetching one record by identifier (FR-006, corrected 2026-08-11)
+
+An earlier version of this contract said an out-of-scope record is "never differentiated
+from not found". That is true of the **error text**, and it is true end-to-end only when
+the tool fetches through `scoped`:
+
+```ruby
+def call(id:)
+  scoped(Invoice).find_by(id: id)    # nil whether it is missing or simply not yours
+end
+```
+
+Fetching from the unscoped model leaves an existence oracle that the envelope cannot
+close: `Invoice.find_by(id:)` returns `nil` for a record that does not exist, and raises
+`DeniedError` for one that exists and belongs to someone else. By the time the envelope
+sees a `nil` it cannot know whether the tool meant a lookup or an empty collection, so it
+cannot make the two answers identical.
+
+Both behaviours are pinned by specs in `spec/reeve/edge_cases_spec.rb`. The denial is
+still the right outcome for the unscoped case — it is loud, audited, and names the rule —
+but a tool that must not disclose existence has to use `scoped`.
+
+## Types with no relation behind them (added 2026-08-11, review finding)
+
+A plain object with an `id` is a record — the core works without ActiveRecord. But a type
+with no relation cannot be checked against a policy scope, only against the policy's own
+`authorize`, and a policy whose real protection lives in `scope` commonly answers `true`
+to everything else. Such a type is therefore trusted only when something ties it to the
+policy:
+
+- a policy named for it (`TicketPolicy` for `Ticket`), or
+- a `scoped(...)` call during the invocation, establishing where the values came from.
+
+Otherwise the call is denied with `unknown_record_type`. Without this, a tool returning
+`Invoice.all.map { Row.new(...) }` had every row waved through by a catch-all `authorize`.
 
 ## Errors
 

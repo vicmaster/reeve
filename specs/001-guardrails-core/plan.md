@@ -154,6 +154,27 @@ so the default `require` pulls in nothing optional (Constitution IV). Within the
 are adapters over it, which is what keeps a guarantee from being provable in one framework
 only (FR-026).
 
+**Kernel frozen 2026-08-11 (T016)** — tag `kernel-frozen`, 148 examples green, RuboCop
+clean. Frozen files: `decision.rb`, `configuration.rb`, `context.rb`, `errors.rb`,
+`scope_result.rb`, `invocation.rb`. The parallel batch (W1/W2/W3) builds against these
+signatures; a change to any of them mid-batch is a stop-the-line event.
+
+Two things the kernel added beyond the original plan, both recorded in data-model.md:
+
+- **`ScopeResult`** — the value a scoper returns. The envelope reads records out of it
+  rather than out of the tool's return value, so "no path returns records without
+  scoping" holds by construction rather than by review.
+- **`tool_error`** — the reserved rule for an allowed invocation whose tool body raised.
+  The ledger records the failure, the caller receives the original exception.
+
+**Kernel amended 2026-08-11, after W1 and W2 merged and before W3 starts.** Additive only,
+and taken in the one window where no branch was building against the frozen surface:
+`AuditWriteError` now exposes `#rule`, returning `Decision::AUDIT_WRITE_FAILED`. The
+reserved rule was otherwise dead code — the data-model diagram claimed a failed ledger
+write produced a `Deny(audit_write_failed)` row, which is impossible, since the ledger is
+the thing that just failed. The exception is the only artifact of that failure, so it
+carries the rule. No signature changed; no existing caller is affected.
+
 ## Implementation Phasing
 
 Aligned to PROJECT-BRIEF.md's graph-engineering trial. Phase numbers below are the brief's,

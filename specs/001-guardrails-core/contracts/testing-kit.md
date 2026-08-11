@@ -39,7 +39,21 @@ Checks shipped in v1:
 | `Checks::RulePresent` | every entry carries a non-null `rule` | FR-009 |
 | `Checks::RedactionHolds` | declared-sensitive values appear in no entry | FR-011 |
 | `Checks::PrincipalRequired` | no resolvable principal denies without consulting the policy | FR-001 |
-| `Checks::ContractVersion` | the recorded audit-entry contract version matches the gem | FR-015 |
+| `Checks::ContractVersion` | the ledger the host migrated implements the shape this gem version writes | FR-015 |
+
+**On `ContractVersion` (corrected 2026-08-11)**: this originally said "the *recorded*
+contract version matches the gem", which is not checkable — there is no `contract_version`
+column, and adding one would stamp the same value on every row of a deploy. What the check
+actually verifies is that the migration the host ran produces the shape this gem version
+writes: the version constant matches, and every column contract v1 requires is present.
+That is the arm which catches the real bug — gem upgraded, migration skipped.
+
+**On `CrossPrincipalLeak` (clarified 2026-08-11)**: the two failure messages shown in this
+document assert different things, so the check takes an explicit mode. `expect: :disjoint`
+(the default, and what the compliance suite means) invokes the tool once per principal and
+fails if the results intersect — which is why the host setup below requires two principals
+with *disjoint* records. `expect: :nothing` (what `deny_access_for(stranger)` means) fails
+if the named principal receives anything at all.
 
 `Checks::ALL` enumerates them; `Checks.run_all(principals:)` runs every check against every
 registered guarded tool and returns a `Report`. That is the compliance suite's engine, and

@@ -1,0 +1,65 @@
+# frozen_string_literal: true
+
+# reeve — per-record authorization and an append-only audit ledger for the MCP tools
+# this application exposes to AI agents.
+#
+# Everything below is a live setting; the only one you must fill in is the first.
+
+Reeve.configure do |config|
+  # ---------------------------------------------------------------------------
+  # REQUIRED. Who is the agent acting for?
+  #
+  # Receives a Reeve::Context and returns the principal — the human whose
+  # permissions govern this call — or nil to deny it. Raising is treated as nil:
+  # reeve fails closed rather than guessing.
+  #
+  # Where the identity comes from is yours to decide. With the fast-mcp adapter
+  # the request's headers arrive as context.metadata[:headers]:
+  #
+  #   config.principal_resolver = lambda do |context|
+  #     token = context.metadata.dig(:headers, "Authorization")
+  #     ApiToken.find_by(token: token)&.user
+  #   end
+  #
+  # TODO: replace this with your own lookup. Until you do, every guarded call
+  # denies with the rule `no_principal` — which is the intended behaviour, not a
+  # bug: the library is safe before it is configured.
+  config.principal_resolver = ->(context) { nil }
+
+  # ---------------------------------------------------------------------------
+  # What happens to a tool with no `guard_with` declaration?
+  #
+  #   :deny                — the call returns nothing and is recorded as denied.
+  #   :allow_with_warning  — the call runs UNSCOPED, is logged, and is recorded
+  #                          with guard: "none". For retrofitting an existing
+  #                          server; every such call is a hole until it is
+  #                          declared.
+  #
+  # Written out rather than defaulted, because it is a decision you should make
+  # knowingly.
+  config.unguarded_tools = :deny
+
+  # ---------------------------------------------------------------------------
+  # Argument names whose values never reach the ledger. Names survive, values do
+  # not, recursively through nested hashes. Add per-tool names with `redact` in
+  # the tool itself.
+  config.redact_arguments = %i[password token secret ssn]
+
+  # What happens if the ledger write fails?
+  #
+  #   :fail  — the invocation fails. A call that cannot be recorded is a call
+  #            that did not happen.
+  #   :warn  — log it and continue. Opt in knowingly: it trades the audit
+  #            guarantee for availability.
+  config.audit_failure_mode = :fail
+
+  # Cap on how many record identifiers one entry stores. The true count is
+  # always recorded, and the entry says when the list was truncated.
+  config.max_recorded_ids = 1000
+
+  # Where warnings go (unguarded tools, degraded audit mode).
+  config.logger = Rails.logger
+end
+
+# The ledger itself is opt-in, so the core stays loadable without ActiveRecord.
+require "reeve/audit"

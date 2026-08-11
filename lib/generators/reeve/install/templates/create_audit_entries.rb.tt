@@ -1,0 +1,69 @@
+# frozen_string_literal: true
+
+# The reeve audit ledger: one row per guarded tool invocation, allowed or denied.
+#
+# The table is yours. Reeve writes to it and reads from it, and exposes no API that
+# updates or deletes a row (FR-010). What the library can enforce, it enforces:
+# Reeve::Audit::Entry is readonly once persisted and aborts destroy. What it cannot
+# enforce, it does not pretend to — a database superuser or a raw `UPDATE` can still
+# rewrite history. If the ledger is a compliance artifact for you, close that gap in the
+# database, not in Ruby:
+#
+#   -- PostgreSQL, for the role your application connects as
+#   REVOKE ALL   ON reeve_audit_entries FROM app_role;
+#   GRANT INSERT, SELECT ON reeve_audit_entries TO app_role;
+#   GRANT USAGE  ON SEQUENCE reeve_audit_entries_id_seq TO app_role;
+#
+# Also explicitly out of scope for v1, so you can plan around it:
+#   * no retention, rotation or archival — this table grows until you prune it, and
+#     pruning is your policy, run by a role that is allowed to delete;
+#   * no cryptographic chaining or tamper-evidence. If that lands later it arrives as a
+#     nullable column, which the audit-entry contract's versioning already permits.
+#
+# `invocation_id` is a UUID stored as a string rather than a native `uuid` column,
+# because reeve supports every database ActiveRecord does and only PostgreSQL has the
+# native type. The unique index on it is what makes "exactly one row per invocation"
+# a checkable property.
+class CreateReeveAuditEntries < ActiveRecord::Migration[7.0]
+  def change
+    create_table :reeve_audit_entries do |t|
+      t.string   :invocation_id,  null: false
+      t.datetime :occurred_at,    null: false
+
+      t.string   :agent_id,       null: false
+      t.string   :agent_name
+      t.string   :principal_type
+      t.string   :principal_id
+
+      t.string   :tool_name,      null: false
+      t.json     :arguments,      null: false
+
+      t.string   :outcome,        null: false
+      t.string   :rule,           null: false
+      # Diagnostic text explaining the rule ("policy raised ArgumentError: boom").
+      # Nullable and free-form: match on `rule`, read `detail`. Never names a record.
+      t.text     :detail
+
+      t.string   :record_type
+      t.json     :record_ids,     null: false
+      t.integer  :record_count,   null: false, default: 0
+      t.boolean  :truncated,      null: false, default: false
+      t.boolean  :derived,        null: false, default: false
+
+      t.string   :guard,          null: false
+      t.integer  :duration_ms
+      t.json     :metadata
+    end
+
+    add_index :reeve_audit_entries, :invocation_id, unique: true
+
+    # One index per query axis in FR-013: by principal, by tool, by agent, by outcome —
+    # each paired with occurred_at, since every one of those questions is asked over a
+    # time range.
+    add_index :reeve_audit_entries, %i[principal_type principal_id occurred_at],
+              name: "index_reeve_audit_entries_on_principal"
+    add_index :reeve_audit_entries, %i[tool_name occurred_at]
+    add_index :reeve_audit_entries, %i[agent_id occurred_at]
+    add_index :reeve_audit_entries, %i[outcome occurred_at]
+  end
+end

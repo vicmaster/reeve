@@ -1,0 +1,78 @@
+AllCops:
+  TargetRubyVersion: 3.0
+  NewCops: enable
+  Exclude:
+    - "vendor/**/*"
+    - "pkg/**/*"
+    - "tmp/**/*"
+
+# Specs describe behavior in sentences; they get more room than library code.
+Layout/LineLength:
+  Max: 100
+  AllowedPatterns:
+    - "^\\s*#"
+  Exclude:
+    - "spec/**/*"
+
+Metrics/BlockLength:
+  Exclude:
+    - "spec/**/*"
+    - "*.gemspec"
+
+Metrics/MethodLength:
+  Max: 20
+
+Metrics/AbcSize:
+  Max: 20
+
+# Keyword arguments are named at the call site, so a long list of them carries none of
+# the ordering hazard this cop exists to catch.
+Metrics/ParameterLists:
+  CountKeywordArgs: false
+
+# Collaborator protocols are written out in full even where a null object ignores them:
+# the signature is the documentation of what a real implementation receives.
+Lint/UnusedMethodArgument:
+  AllowUnusedKeywordArguments: true
+
+Lint/ConstantDefinitionInBlock:
+  Exclude:
+    - "spec/**/*"
+
+# The envelope is one method precisely because there must be only one path through it;
+# splitting it to satisfy a metric would defeat the point. The scoper is one class for the
+# same reason: it is the single dispatch over what a tool can return.
+Metrics/ClassLength:
+  Exclude:
+    - "lib/reeve/invocation.rb"
+    - "lib/reeve/authorization/scoper.rb"
+
+# Dispatching on the shape of a tool's return value is inherently branchy; the branches
+# are the contract's return-value table, one for one.
+Metrics/CyclomaticComplexity:
+  Max: 8
+
+# Policy objects in the specs implement a host-side protocol (`authorize`, `scope`);
+# renaming them to satisfy a predicate convention would misstate the protocol.
+Naming/PredicateMethod:
+  Exclude:
+    - "spec/**/*"
+
+Style/Documentation:
+  Enabled: true
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/TrailingCommaInArguments:
+  EnforcedStyleForMultiline: no_comma
+
+Style/TrailingCommaInArrayLiteral:
+  EnforcedStyleForMultiline: no_comma
+
+Style/TrailingCommaInHashLiteral:
+  EnforcedStyleForMultiline: no_comma
+
+# Guard clauses that fail closed read better than nested conditionals.
+Style/GuardClause:
+  Enabled: true

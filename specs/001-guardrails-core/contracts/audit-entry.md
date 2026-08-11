@@ -15,7 +15,13 @@ column-level table. Contractual guarantees on top of it:
 1. **Exactly one row per invocation.** `invocation_id` is unique; a retry that reuses the
    same id is a no-op insert, not a second row.
 2. **Both outcomes recorded.** Denials are rows, not log lines (FR-008).
-3. **`rule` is never null.** Every row explains itself (FR-009).
+3. **`rule` is never null.** Every row explains itself (FR-009). Its companion `detail`
+   carries the same explanation in words — "policy raised ArgumentError: owner_id is
+   missing" — and is nullable, free-form and capped at 1000 characters. **Match on `rule`,
+   read `detail`.** `detail` never names a record, so an out-of-scope denial stays
+   indistinguishable from a record that does not exist (FR-006). Added 2026-08-11 as a
+   nullable column, which the versioning rule below makes a MINOR change: contract
+   version stays `1`.
 4. **Arguments are post-redaction.** Names survive, declared-sensitive values do not
    (FR-011). No unredacted copy is written anywhere by this gem.
 5. **`record_count` is the truth even when `record_ids` is truncated**; `truncated` marks

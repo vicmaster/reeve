@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  # Feature branches are where the work happens, so they get CI too — waiting for a PR
+  # to find out a Ruby 3.0 incompatibility is finding out too late.
+  push:
+  pull_request:
+
+jobs:
+  spec:
+    name: "specs (ruby ${{ matrix.ruby }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor, a common middle, and the current release. Ruby 3.0 is in the matrix
+        # because the gem claims to support it; dropping it is a breaking change.
+        ruby: ["3.0", "3.2", "3.4"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - run: bundle exec rspec
+
+  rubocop:
+    name: rubocop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+      - run: bundle exec rubocop

@@ -1,5 +1,88 @@
 # Changelog
 
+All notable changes are recorded here. This project follows [Semantic
+Versioning](https://semver.org), with one rule specific to what it does — see
+[Versioning policy](#versioning-policy).
+
+## [Unreleased]
+
+### Added
+
+**Authorization**
+
+- `guard_with SomePolicy` declares the policy governing a tool. A tool without one is
+  denied (`no_guard_declared`) unless the host opts into `unguarded_tools =
+  :allow_with_warning`, which runs the tool unscoped and records `guard: "none"`.
+- `redact :argument_name` keeps an argument's value out of the ledger while keeping its
+  name.
+- `scoped(Model)` returns the policy-scoped relation inside a tool body. It is how a
+  guarded tool returns anything that is not a record: a count or a summary computed from
+  `scoped(...)` is safe because the tool never held unscoped data. A derived value
+  returned without it is denied (`unscoped_derived_result`).
+- Policy adapters for plain objects and for Pundit, behind one two-method protocol
+  (`authorize`, `scope`). `:auto` picks one and reports which through
+  `Reeve.config.resolved_policy_adapter`. Neither Pundit nor any authorization library is
+  a runtime dependency.
+- Per-record scoping for relations, arrays, single records, mixed types and derived
+  values. A single record outside the principal's scope is refused without naming it.
+
+**Audit**
+
+- One append-only `reeve_audit_entries` row per invocation, allowed or denied, recording
+  the agent, the principal, the tool, post-redaction arguments, returned identifiers, the
+  outcome, the rule that decided, and why it decided (`detail`).
+- The write happens in its own transaction, so a tool that raises and rolls back its own
+  work still leaves a trace — the invocations most worth recording are the ones that
+  failed.
+- A failed ledger write fails the invocation. `audit_failure_mode = :warn` degrades that
+  deliberately and must be opted into.
+- `Reeve::Audit::Query` queries the ledger by principal, agent, tool, outcome and time
+  range.
+- Entries are read-only after insert and refuse to be destroyed; the generated migration
+  documents the `GRANT INSERT, SELECT` that enforces what a library cannot.
+
+**Testing kit**
+
+- Seven framework-neutral checks (`CrossPrincipalLeak`, `AuditCoverage`, `GuardDeclared`,
+  `RulePresent`, `RedactionHolds`, `PrincipalRequired`, `ContractVersion`) plus
+  `Checks.run_all`, all plain Ruby that loads no test framework.
+- RSpec front-end (`require "reeve/rspec"`): `deny_access_for`, `audit_every_call`,
+  `pass_reeve_check`, and the `"a reeve-compliant server"` shared example group.
+- Minitest front-end (`require "reeve/minitest"`): the same guarantees from a stock
+  `rails new` application, with no RSpec installed.
+- Failure messages are built by the checks, so all three front-ends emit identical text.
+
+**Adoption**
+
+- `rails generate reeve:install` writes the initializer and the ledger migration.
+  `principal_resolver` ships as a TODO, because it is the one thing only the host can
+  answer, and reeve denies every call until it is filled in.
+- fast-mcp adapter (`require "reeve/fast_mcp"`): the DSL on every tool and the envelope
+  around every call, with the principal resolved from the request's headers. Needs Ruby
+  3.1+, because fast-mcp does.
+- `Reeve.invoke` gives the same guarantees with no Rails, no ActiveRecord and no MCP
+  server library.
+
+### Notes
+
+- Ruby 3.0+, Rails 7.0+, zero runtime dependencies.
+- Publishing now requires MFA on the owner's account (`rubygems_mfa_required`).
+
 ## [0.0.1] - 2026-08-11
 
 - Placeholder release reserving the gem name. No functionality.
+
+## Versioning policy
+
+Semantic versioning, with one project-specific rule that follows from what this library
+is for:
+
+- **A change that narrows what a tool returns is a security fix and may ship in a patch.**
+  If reeve was letting a record through that a policy did not permit, closing that is not
+  a breaking change, however much it changes behaviour for someone relying on it.
+- **A change that widens access is breaking by definition** — major version, plus a
+  migration note saying exactly what became visible that was not visible before.
+- Adding a nullable ledger column is minor and leaves the audit-entry contract version
+  alone. Removing or renaming a column, or changing what a value means, is major and bumps
+  it.
+- The audit-entry contract version is `1`.

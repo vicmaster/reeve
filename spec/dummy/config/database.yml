@@ -1,0 +1,14 @@
+# The dummy application's database. In-memory sqlite: the quickstart builds its own
+# schema on boot and throws it away on exit.
+default: &default
+  adapter: sqlite3
+  pool: 5
+  timeout: 5000
+
+development:
+  <<: *default
+  database: ":memory:"
+
+test:
+  <<: *default
+  database: ":memory:"

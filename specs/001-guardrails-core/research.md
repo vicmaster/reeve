@@ -40,10 +40,27 @@ call, not in a global. Where thread/fiber-local storage is needed for ergonomics
 (`Guardrails.current_principal` inside a tool body), it MUST be set and unset by the
 envelope with an `ensure`, so it cannot leak across calls (spec edge case).
 
-**OPEN**: exactly which per-request metadata fast-mcp exposes inside a tool instance
-(headers appear reachable; the README documents `filter_tools do |request, tools|` at the
-server level but does not document in-tool request access). Verify against the installed
-gem during the adapter task; the resolver contract does not change either way.
+**RESOLVED 2026-08-11 (T056), against fast-mcp 1.6.0 as installed.** In-tool request
+access exists, so the server-level fallback is not needed. `FastMcp::Server` does:
+
+```ruby
+tool_instance = tool.new(headers: headers)          # mcp/server.rb:327
+result, metadata = tool_instance.call_with_schema_validation!(**symbolized_args)
+```
+
+and `FastMcp::Tool` exposes `attr_reader :headers` (mcp/tool.rb:364). The transport's
+headers are therefore the per-request context, and the only one a tool has — there is no
+session or connection object reachable from inside `call`.
+
+The adapter passes those headers through to the resolver untouched, as
+`context.metadata[:headers]`: which header identifies the human is the host's decision,
+not ours. Agent attribution reads `X-MCP-Client`, `X-Client-Name`, then `User-Agent`, and
+records `"unknown"` when none answers — attribution is not authorization.
+
+The envelope is installed by prepending a module to each tool **subclass** at `inherited`
+time rather than to `FastMcp::Tool` itself: a module prepended to the parent still sits
+behind the subclass's own `call` in the ancestry, so wrapping the parent would silently do
+nothing. Prepending at `inherited` time works even though `call` is defined afterwards.
 
 ## R3. Bridging to policies
 
