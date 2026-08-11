@@ -76,8 +76,3 @@ Style/TrailingCommaInHashLiteral:
 # Guard clauses that fail closed read better than nested conditionals.
 Style/GuardClause:
   Enabled: true
-
-# Re-enabled by T068: the gemspec gains rubygems_mfa_required once MFA is switched on for
-# the rubygems account. Setting the metadata before that would block pushing.
-Gemspec/RequireMFA:
-  Enabled: false

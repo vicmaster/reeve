@@ -27,7 +27,11 @@ Gem::Specification.new do |spec|
     "homepage_uri" => spec.homepage,
     "source_code_uri" => spec.homepage,
     "changelog_uri" => "#{spec.homepage}/blob/main/CHANGELOG.md",
-    "bug_tracker_uri" => "#{spec.homepage}/issues"
+    "bug_tracker_uri" => "#{spec.homepage}/issues",
+    # Publishing this gem requires MFA on the owner's account. A guardrails library that
+    # could be replaced by anyone holding a stolen API key would be arguing against
+    # itself.
+    "rubygems_mfa_required" => "true"
   }
 
   spec.files = Dir[
