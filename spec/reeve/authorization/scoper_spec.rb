@@ -168,6 +168,29 @@ RSpec.describe Reeve::Authorization::Scoper do
     end
   end
 
+  describe "records that are not ActiveRecord" do
+    # The core must work without a database at all; a plain object with an identity is
+    # a record, whatever class it came from.
+    it "treats a Struct with an id as a record, not as a derived value" do
+      stub_const("PlainRecord", Struct.new(:id, :owner_id))
+      stub_const("PlainRecordPolicy", Class.new do
+        def self.name = "PlainRecordPolicy"
+        def self.authorize(principal, _action, record) = record.nil? || record.owner_id == principal.id
+        def self.scope(principal, relation) = relation.select { |r| r.owner_id == principal.id }
+      end)
+      tool_class.guard_with(PlainRecordPolicy)
+
+      result = scoper.scope(
+        context: context, guard: tool_class.reeve_guard,
+        result: [PlainRecord.new(1, alice.id), PlainRecord.new(2, bob.id)]
+      )
+
+      expect(result).to be_allowed
+      expect(result).not_to be_derived
+      expect(result.records.map(&:id)).to eq([1])
+    end
+  end
+
   describe "a derived value" do
     # R4: safe only when the tool asked for the scoped relation rather than the model.
     it "denies a count the tool computed without scoped(...)" do

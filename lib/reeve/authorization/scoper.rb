@@ -143,13 +143,12 @@ module Reeve
                           record_count: state.scoped_source_count || 0)
       end
 
+      # Two ways to answer "may this principal see this record?". For ActiveRecord, ask
+      # the policy scope once and intersect identifiers — one query for the whole set.
+      # For anything else there is no relation to narrow, so each record is authorized on
+      # its own. The second path is what makes the core usable with no database at all.
       def in_scope(context, policy, adapter, record_class, records)
-        scoped = adapter.scope(
-          principal: context.principal, policy: policy, relation: relation_for(record_class)
-        )
-        return records.select { |record| allowed?(adapter, context, policy, record) } if scoped.nil?
-
-        visible = visible_ids(scoped)
+        visible = visible_ids_for(context, policy, adapter, record_class)
         if visible.nil?
           return records.select do |record|
             allowed?(adapter, context, policy, record)
@@ -159,6 +158,21 @@ module Reeve
         records.select { |record| visible.include?(identifier(record)) }
       end
 
+      def visible_ids_for(context, policy, adapter, record_class)
+        return nil unless active_record_class?(record_class)
+
+        scoped = adapter.scope(
+          principal: context.principal, policy: policy, relation: record_class.all
+        )
+        scoped.nil? ? nil : visible_ids(scoped)
+      end
+
+      def active_record_class?(record_class)
+        defined?(::ActiveRecord::Base) &&
+          record_class.is_a?(Class) &&
+          record_class <= ::ActiveRecord::Base
+      end
+
       def allowed?(adapter, context, policy, record)
         adapter.authorize(
           principal: context.principal, policy: policy, action: :show, record: record
@@ -166,15 +180,11 @@ module Reeve
       end
 
       def visible_ids(scoped)
-        return nil unless scoped.respond_to?(:pluck)
+        return nil unless relation?(scoped)
 
         scoped.pluck(:id).map(&:to_s)
       rescue StandardError
         nil
-      end
-
-      def relation_for(record_class)
-        record_class.respond_to?(:all) ? record_class.all : []
       end
 
       def policy_for!(adapter, guard, record_class)
@@ -230,7 +240,10 @@ module Reeve
       # only question that generalises: does it have an identity of its own?
       def record?(value)
         return true if defined?(::ActiveRecord::Base) && value.is_a?(::ActiveRecord::Base)
-        return false if value.is_a?(Hash) || value.is_a?(Array) || value.is_a?(Struct)
+        # Hashes and arrays are shapes, not records. A Struct with an identity is a
+        # record like any other — excluding it was arbitrary, and it is exactly what a
+        # host without ActiveRecord reaches for.
+        return false if value.is_a?(Hash) || value.is_a?(Array)
 
         value.respond_to?(:id) && value.class.respond_to?(:name) && !value.class.name.nil?
       end

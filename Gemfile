@@ -27,10 +27,12 @@ gem "pundit"
 if RUBY_VERSION < "3.1"
   gem "activerecord", "~> 7.0.0"
   gem "activesupport", "~> 7.0.0"
+  gem "railties", "~> 7.0.0"
   gem "sqlite3", "~> 1.7"
 else
   gem "activerecord"
   gem "activesupport"
   gem "fast-mcp"
+  gem "railties"
   gem "sqlite3"
 end

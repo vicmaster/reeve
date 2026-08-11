@@ -212,12 +212,12 @@ fixtures; green on the first, red with the right message on each of the others.
 
 ### Tests first
 
-- [ ] T053 [P] [US4] Generator specs: creates initializer and migration, writes
+- [x] T053 [P] [US4] Generator specs: creates initializer and migration, writes
       `unguarded_tools` explicitly with both options shown, leaves `principal_resolver` as
       a TODO, migration applies cleanly (FR-021, FR-023)
 - [x] T054 [P] [US4] fast-mcp adapter specs: DSL available on `FastMcp::Tool` subclasses,
       context built from server metadata, adapter absent ⇒ core unaffected (FR-022, FR-024)
-- [ ] T055 [P] [US4] Plain-interface specs: `Reeve.invoke` gives identical
+- [x] T055 [P] [US4] Plain-interface specs: `Reeve.invoke` gives identical
       guarantees with no Rails and no server library (FR-024, quickstart §"Without Rails")
 
 ### Implementation
@@ -228,7 +228,7 @@ fixtures; green on the first, red with the right message on each of the others.
 - [x] T057 [US4] `lib/reeve/integrations/fast_mcp/context_builder.rb`
 - [x] T058 [US4] `lib/reeve/integrations/fast_mcp/tool_extension.rb` and the
       `lib/reeve/fast_mcp.rb` opt-in entry point
-- [ ] T059 [US4] `lib/generators/reeve/install/install_generator.rb` + initializer
+- [x] T059 [US4] `lib/generators/reeve/install/install_generator.rb` + initializer
       template
 - [ ] T060 [US4] Build `spec/dummy` — minimal Rails app, two principals, shared record set,
       three tools (relation-returning, single-record, aggregate via `scoped`)
