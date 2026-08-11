@@ -10,16 +10,30 @@ module Reeve
     # ActiveJob. An asynchronous ledger cannot be relied on and would make FR-012
     # unenforceable.
     #
-    # The insert opens **its own** transaction rather than joining the tool's (R5,
-    # corrected). A tool body that raises rolls its own work back, and the trace of an
-    # invocation that blew up is the one most worth having; writing inside the tool's
-    # transaction would delete exactly those rows.
+    # The insert runs in `requires_new: true`, which is what makes the trace survive a
+    # tool body that opens a transaction and rolls it back (R5) — the case this was built
+    # for, and the one it does solve.
     #
-    # The known limit, stated rather than papered over: on a single connection there is a
-    # narrow window where the tool's data commits and the ledger write then fails. In the
-    # default :fail mode the caller still learns, by exception — but the data change has
-    # already landed. Closing that window entirely needs a second connection or two-phase
-    # commit, which is out of proportion for v1.
+    # What it does **not** do, corrected after review: `requires_new` is a SAVEPOINT, not
+    # an independent transaction. If the host has already opened a transaction *around*
+    # the invocation — a controller or middleware that wraps each request, or a test suite
+    # using transactional fixtures — the savepoint is released into that transaction, and
+    # a later rollback takes the ledger row with it. The write reports success and the
+    # envelope has no way to learn otherwise, so the invocation returns records with no
+    # surviving trace. The comment here previously claimed independence outright; it did
+    # not have it.
+    #
+    # A genuinely independent write needs a second connection, and that is not portable:
+    # on SQLite the enclosing transaction holds the write lock, so a second connection
+    # blocks until it times out. Rather than fail every call on the databases where
+    # isolation is impossible, the recorder detects the enclosing transaction and warns
+    # that the guarantee is suspended for that call. A host that needs durability under a
+    # wrapping transaction supplies its own `audit_recorder` — writing to a separate
+    # connection, a queue, or an append-only log — which is what that setting is for.
+    #
+    # The other known limit, unchanged: on a single connection there is a narrow window
+    # where the tool's data commits and the ledger write then fails. The caller learns by
+    # exception, but the data change has already landed.
     class Recorder
       # Free-form text from a policy or an exception message. Capped rather than trusted:
       # it is the one column whose length the host does not control.
@@ -38,6 +52,7 @@ module Reeve
       # fail the invocation.
       def record(attributes)
         row = row_for(attributes)
+        warn_about_enclosing_transaction(row[:invocation_id])
 
         entry_class.transaction(requires_new: true) do
           entry_class.create!(row)
@@ -119,6 +134,25 @@ module Reeve
         return nil if blank?(value)
 
         value.to_s[0, DETAIL_LIMIT]
+      end
+
+      # The host's transaction, not the tool's: the tool's own transaction is nested
+      # inside this write and is exactly what `requires_new` protects against.
+      def warn_about_enclosing_transaction(invocation_id)
+        return unless enclosing_transaction?
+
+        message = "reeve: invocation #{invocation_id} was recorded inside a transaction " \
+                  "the host opened around it, so the ledger row will be rolled back with " \
+                  "it. Configure Reeve.config.audit_recorder with a recorder that writes " \
+                  "outside this transaction if the trace must survive."
+        logger = config.logger
+        logger ? logger.warn(message) : Kernel.warn(message)
+      end
+
+      def enclosing_transaction?
+        entry_class.connection.transaction_open?
+      rescue StandardError
+        false
       end
 
       def blank?(value)

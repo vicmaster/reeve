@@ -97,6 +97,20 @@ Both behaviours are pinned by specs in `spec/reeve/edge_cases_spec.rb`. The deni
 still the right outcome for the unscoped case — it is loud, audited, and names the rule —
 but a tool that must not disclose existence has to use `scoped`.
 
+## Types with no relation behind them (added 2026-08-11, review finding)
+
+A plain object with an `id` is a record — the core works without ActiveRecord. But a type
+with no relation cannot be checked against a policy scope, only against the policy's own
+`authorize`, and a policy whose real protection lives in `scope` commonly answers `true`
+to everything else. Such a type is therefore trusted only when something ties it to the
+policy:
+
+- a policy named for it (`TicketPolicy` for `Ticket`), or
+- a `scoped(...)` call during the invocation, establishing where the values came from.
+
+Otherwise the call is denied with `unknown_record_type`. Without this, a tool returning
+`Invoice.all.map { Row.new(...) }` had every row waved through by a catch-all `authorize`.
+
 ## Errors
 
 `Reeve::DeniedError` carries `#tool_name`, `#principal_id`, `#rule`, and

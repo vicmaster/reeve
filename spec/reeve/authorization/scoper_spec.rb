@@ -201,6 +201,54 @@ RSpec.describe Reeve::Authorization::Scoper do
   # TextNotePolicy does not exist and the declared NotePolicy was never consulted.
   # Review finding: one non-record element used to demote the whole array to the derived
   # path, so real records rode along unscoped whenever scoped(...) had been called.
+  # Review finding: once Structs counted as records, a tool returning values *built from*
+  # unscoped records had each one waved through by a catch-all `authorize`, where before
+  # it was structurally denied as a derived value.
+  describe "a scope-less type with nothing tying it to the policy" do
+    let(:permissive) do
+      stub_const("PermissiveInvoicePolicy", Class.new do
+        def self.name = "PermissiveInvoicePolicy"
+        def self.authorize(*) = true
+        def self.scope(principal, relation) = relation.where(owner_id: principal.id)
+      end)
+    end
+
+    def invoke_returning(items, policy)
+      tool_class.guard_with(policy)
+      declaration = tool_class.reeve_guard
+      Reeve::Authorization::Current.with(
+        context: context, declaration: declaration,
+        adapter: Reeve::Authorization::Adapters::Plain.new
+      ) { scoper.scope(context: context, guard: declaration, result: items) }
+    end
+
+    it "denies rows derived from unscoped records" do
+      stub_const("Row", Struct.new(:id, :label))
+      rows = Invoice.all.map { |invoice| Row.new(invoice.id, invoice.number) }
+
+      result = invoke_returning(rows, permissive)
+
+      expect(result).to be_denied
+      expect(result.decision.rule).to eq("unknown_record_type")
+      expect(result.decision.detail).to match(/scoped\(\.\.\.\)|policy named for it/)
+    end
+
+    it "allows them when a policy is named for the type" do
+      stub_const("Ticket", Struct.new(:id, :owner_id))
+      stub_const("TicketPolicy", Class.new do
+        def self.name = "TicketPolicy"
+        def self.authorize(principal, _action, record) = record.nil? || record.owner_id == principal.id
+        def self.scope(_principal, relation) = relation
+      end)
+      tickets = [Ticket.new(1, alice.id), Ticket.new(2, bob.id)]
+
+      result = invoke_returning(tickets, TicketPolicy)
+
+      expect(result).to be_allowed
+      expect(result.records.map(&:id)).to eq([1])
+    end
+  end
+
   describe "an array holding both records and something else" do
     def scope_mixed(items, scoped_used:)
       tool_class.guard_with(InvoicePolicy)
@@ -337,12 +385,12 @@ RSpec.describe Reeve::Authorization::Scoper do
     # fell through to a catch-all `else` and permitted everything.
     it "asks the policy about the action the guard declared" do
       asked = []
-      recording = stub_const("RecordingActionPolicy", Class.new do
+      recording = stub_const("PlainThingPolicy", Class.new do
         define_singleton_method(:authorize) do |_p, action, record|
           asked << action
           !record.nil?
         end
-        def self.name = "RecordingActionPolicy"
+        def self.name = "PlainThingPolicy"
         def self.scope(_principal, relation) = relation
       end)
       plain_record = stub_const("PlainThing", Struct.new(:id, :owner_id))

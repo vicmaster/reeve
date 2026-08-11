@@ -88,6 +88,12 @@ module Reeve
         record_class
       end
 
+      # `InvoicePolicy` is named for `Invoice`.
+      def self.policy_named_for?(policy, record_class)
+        name = policy.respond_to?(:name) && policy.name ? policy.name : policy.class.name
+        name.to_s.sub(/Policy\z/, "") == base_class_name(record_class)
+      end
+
       def self.base_class_name(record_class)
         base_class(record_class).name.to_s
       end
@@ -176,11 +182,38 @@ module Reeve
         groups.each do |record_class, group|
           policy = policy_for!(adapter, guard, record_class)
           return unpoliced(record_class) if policy.nil?
+          return ungoverned(record_class) unless governed?(record_class, policy, adapter)
 
           kept.concat(in_scope(context, policy, adapter, record_class, group))
         end
 
         kept
+      end
+
+      # A type with no relation cannot be checked against a scope, only against the
+      # policy's own `authorize` — and a policy whose real protection lives in `scope`
+      # commonly answers `true` to everything else. So a scope-less type is trusted only
+      # when something ties it to the policy: a policy named for it, or a `scoped(...)`
+      # call establishing where the values came from.
+      #
+      # Without this, a tool returning `Invoice.all.map { Row.new(...) }` had every row
+      # allowed by a catch-all `authorize`, which is what a Struct used to be protected
+      # from by being classed as a derived value.
+      def governed?(record_class, policy, adapter)
+        return true if relation_source?(record_class)
+        return true if Current.state&.scoped_used?
+        return true if self.class.policy_named_for?(policy, record_class)
+
+        !adapter.policy_for(self.class.base_class(record_class)).nil?
+      end
+
+      def ungoverned(record_class)
+        ScopeResult.deny(
+          rule: Decision::UNKNOWN_RECORD_TYPE,
+          detail: "#{record_class} has no relation to scope and no policy named for it, " \
+                  "so what the principal may see cannot be established — derive it " \
+                  "through scoped(...) or give the type its own policy"
+        )
       end
 
       def unscoped_derived(example)
@@ -196,6 +229,7 @@ module Reeve
       def scope_single_record(context, guard, record, adapter)
         policy = policy_for!(adapter, guard, record.class)
         return unpoliced(record.class) if policy.nil?
+        return ungoverned(record.class) unless governed?(record.class, policy, adapter)
 
         return ScopeResult.deny(rule: Decision::OUT_OF_SCOPE_RECORD) if
           in_scope(context, policy, adapter, record.class, [record]).empty?

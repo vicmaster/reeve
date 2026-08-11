@@ -240,4 +240,57 @@ RSpec.describe Reeve::Audit::Recorder do
       expect(Reeve.config.audit_recorder).to be(custom)
     end
   end
+  # Review finding: `requires_new: true` is a savepoint, so a transaction the *host* wraps
+  # around the invocation takes the ledger row with it when it rolls back — while the
+  # write reports success. Isolation is not portable (SQLite's enclosing transaction holds
+  # the write lock, so a second connection just times out), so the recorder says so
+  # instead of pretending otherwise.
+  describe "when the host has wrapped the invocation in its own transaction" do
+    let(:logger) { CapturingLogger.new }
+    let(:attributes) do
+      {
+        invocation_id: "wrapped-1", occurred_at: Time.now, agent_id: "claude",
+        tool_name: "invoice_search", arguments: {}, outcome: "allow",
+        rule: "InvoicePolicy#index?", record_ids: [], record_count: 0, guard: "policy"
+      }
+    end
+
+    before { Reeve.configure { |c| c.logger = logger } }
+
+    it "warns that the row will not survive the enclosing rollback" do
+      Reeve::Audit::Entry.transaction do
+        described_class.record(attributes)
+        raise ActiveRecord::Rollback
+      end
+
+      expect(logger.warnings.join).to match(/rolled back with it/)
+      expect(logger.warnings.join).to include("audit_recorder")
+    end
+
+    it "names the invocation whose trace is at risk" do
+      Reeve::Audit::Entry.transaction do
+        described_class.record(attributes)
+        raise ActiveRecord::Rollback
+      end
+
+      expect(logger.warnings.join).to include(attributes[:invocation_id])
+    end
+
+    it "does not warn when nothing encloses the write" do
+      described_class.record(attributes)
+
+      expect(logger.warnings).to be_empty
+    end
+
+    # Documenting the consequence rather than asserting a guarantee reeve cannot make.
+    it "loses the row when that transaction rolls back — the reason for the warning" do
+      Reeve::Audit::Entry.transaction do
+        described_class.record(attributes)
+        expect(Reeve::Audit::Entry.count).to eq(1)
+        raise ActiveRecord::Rollback
+      end
+
+      expect(Reeve::Audit::Entry.count).to eq(0)
+    end
+  end
 end
