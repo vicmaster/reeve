@@ -4,7 +4,9 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.1.0] - 2026-08-11
+
+First working release. The published 0.0.1 was a placeholder holding the gem name.
 
 ### Added
 
@@ -63,10 +65,37 @@ Versioning](https://semver.org), with one rule specific to what it does — see
 - `Reeve.invoke` gives the same guarantees with no Rails, no ActiveRecord and no MCP
   server library.
 
+### Known limitations
+
+Stated here because finding them yourself later is worse than reading them now.
+
+- **A transaction the host wraps around an invocation takes the ledger row with it.** The
+  recorder writes in a savepoint, which protects the trace from a transaction the *tool*
+  opens and rolls back, but not from one already open around the whole call — a controller
+  that wraps each request, or a test suite using transactional fixtures. Reeve detects this
+  and warns, naming the invocation. Real isolation needs a second connection and is not
+  portable: on SQLite the enclosing transaction holds the write lock and a second
+  connection times out. Hosts needing durability there supply their own `audit_recorder`.
+- **An unscoped fetch by id still discloses existence.** `Invoice.find_by(id:)` denies for
+  a record that exists but belongs to someone else, and returns `nil` for one that does not
+  exist. Fetching through `scoped(...)` makes both answers `nil`.
+- **A scope-less type must be tied to its policy.** A plain object with an `id` is a
+  record, but a type with no relation cannot be checked against a policy scope — only
+  against `authorize`, which is often permissive. Such a type is trusted when a policy is
+  named for it or a `scoped(...)` call establishes provenance, and denied otherwise.
+- **A call that cannot be recorded fails, even when it was already failing.** An
+  unrecordable denial raises `AuditWriteError` carrying the denial as `#during`, rather
+  than the denial itself. With no recorder configured at all, that is the first thing you
+  will see, and it names the missing ledger.
+- **`AuditCoverage` proves one invocation is recorded**, not every invocation.
+- **The fast-mcp adapter needs Ruby 3.1+**, because fast-mcp depends on dry-schema. The
+  core supports 3.0.
+- CI runs SQLite only; MySQL and PostgreSQL rest on ActiveRecord's portability.
+
 ### Notes
 
 - Ruby 3.0+, Rails 7.0+, zero runtime dependencies.
-- Publishing now requires MFA on the owner's account (`rubygems_mfa_required`).
+- Publishing requires MFA on the owner's account (`rubygems_mfa_required`).
 
 ## [0.0.1] - 2026-08-11
 

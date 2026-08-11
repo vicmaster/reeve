@@ -7,9 +7,9 @@ A Ruby gem that makes it safe for a Rails application to expose MCP tools to AI 
 declarative per-record authorization, an append-only audit ledger, and a testing kit that
 proves both hold.
 
-> **Status: unreleased.** The published `0.0.1` is a placeholder reserving the gem name.
-> The implementation on `main` is complete and green but has not been released — don't
-> `bundle add reeve` expecting the code below to be in the box yet.
+> **Status: 0.1.0, the first working release.** Read the known limitations in
+> [CHANGELOG.md](CHANGELOG.md) before adopting it — particularly the one about a
+> transaction wrapped around an invocation, if your application wraps requests in one.
 
 *A reeve is an official who acts with delegated authority on behalf of someone else — the
 root of "sheriff" (shire-reeve). That delegation is exactly what this gem governs: an agent
