@@ -115,7 +115,23 @@ silent.
 
 ## R8. Testing kit shape
 
-**Decision**: RSpec matchers plus an includable shared example group.
+**Decision (revised 2026-08-11)**: A framework-neutral check layer with three front-ends.
+
+The original decision was RSpec-only, justified by a spec Assumption that I had written
+myself — circular, and wrong on the merits. Both frameworks can express every assertion the
+kit needs; RSpec's advantage was distribution and a quotable README demo, not capability.
+Since a stock `rails new` app is Minitest and no team adds a second test framework to an
+existing suite, RSpec-only means the gem simply does not work for a large share of Rails.
+For a library whose purpose is to let people prove their guardrails hold, that is a failure
+of purpose, not a market-segmentation choice.
+
+All logic lives in plain-Ruby `Checks::*` objects returning a `Result`. RSpec matchers and
+Minitest assertions are thin adapters; calling the checks directly is a supported third
+path, which makes the guarantees assertable from a rake task, a CI script, or a boot-time
+assertion — not only from a test suite. A single shared example table drives the same
+fixtures through all three front-ends so none can silently diverge (SC-009).
+
+Front-end surfaces:
 - `expect(tool).to deny_access_for(other_principal)` — failure message names the leaked
   identifiers (FR-016, FR-019).
 - `expect(server).to audit_every_call` — drives every registered tool through the
@@ -123,11 +139,14 @@ silent.
 - `it_behaves_like "an mcp-guardrails compliant server"` — the shared compliance suite,
   iterating every registered guarded tool (FR-018).
 
-Matchers live behind `require "mcp/guardrails/rspec"` so RSpec stays a development
-dependency. No MCP client, no network (FR-020).
+Minitest gets `assert_denies_access_for` / `assert_audits_every_call` and a compliance
+module with one assertion per check.
 
-**OPEN**: whether to also ship Minitest assertions. Deferred — spec Assumptions scope v1
-to one framework; revisit only on demand.
+Front-ends live behind explicit requires (`mcp/guardrails/rspec`,
+`mcp/guardrails/minitest`) so neither framework is a runtime dependency. No MCP client, no
+network (FR-020).
+
+**Resolved**: Minitest ships in v1, not deferred.
 
 ## R9. Behavior toward pre-existing unguarded tools
 

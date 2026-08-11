@@ -18,7 +18,8 @@ everyone else.
 **Language/Version**: Ruby 3.2+ (gem targets maintained Rubies; CI matrix 3.2 / 3.3 / 3.4)
 **Primary Dependencies**: none required at runtime. Optional/soft: ActiveRecord + ActiveSupport
 (≥ 7.1, for the ledger and generators), Pundit (policy bridge), fast-mcp (adapter),
-RSpec (testing kit). All detected at load, none in `spec.add_dependency`.
+RSpec **and** Minitest (testing-kit front-ends). All detected at load, none in
+`spec.add_dependency`. The kit's checks are plain Ruby and load neither framework.
 **Storage**: host-owned ActiveRecord table `mcp_guardrails_audit_entries`, created by the
 install generator; append-only. JSON/JSONB columns for arguments and record identifiers.
 **Testing**: RSpec + a dummy Rails app under `spec/dummy` with SQLite for the AR-backed and
@@ -101,12 +102,24 @@ lib/
         │   ├── recorder.rb               # builds + writes exactly one entry
         │   ├── redactor.rb               # R6
         │   └── query.rb                  # by principal / agent / tool / outcome / time
-        ├── rspec.rb                      # opt-in require for the testing kit
+        ├── rspec.rb                      # opt-in require: RSpec front-end
+        ├── minitest.rb                   # opt-in require: Minitest front-end
         ├── testing/
-        │   ├── matchers/
+        │   ├── checks/                   # framework-neutral; ALL the logic lives here
+        │   │   ├── cross_principal_leak.rb
+        │   │   ├── audit_coverage.rb
+        │   │   ├── guard_declared.rb
+        │   │   ├── rule_present.rb
+        │   │   ├── redaction_holds.rb
+        │   │   ├── principal_required.rb
+        │   │   ├── contract_version.rb
+        │   │   └── result.rb             # Result + Report + run_all
+        │   ├── matchers/                 # thin RSpec adapters over the checks
         │   │   ├── deny_access_for.rb
         │   │   └── audit_every_call.rb
-        │   └── compliance_suite.rb       # shared example group
+        │   ├── compliance_suite.rb       # RSpec shared example group
+        │   ├── assertions.rb             # thin Minitest adapters over the checks
+        │   └── compliance_assertions.rb  # Minitest compliance module
         ├── fast_mcp.rb                   # opt-in require for the adapter
         └── integrations/
             └── fast_mcp/
@@ -134,9 +147,12 @@ spec modules one-to-one (`authorization/`, `audit/`, `testing/`), with `invocati
 `context.rb`, `decision.rb`, `configuration.rb`, and `errors.rb` as the shared kernel all
 three depend on. That kernel is deliberately small and is built **before** the three modules
 fan out — it is the merge-conflict surface for the Phase 2 parallel batch, so it must be
-frozen first. Adapters and the RSpec kit sit behind explicit `require` paths
-(`require "mcp/guardrails/fast_mcp"`, `require "mcp/guardrails/rspec"`) so the default
-`require` pulls in nothing optional (Constitution IV).
+frozen first. Adapters and the testing-kit front-ends sit behind explicit `require` paths
+(`require "mcp/guardrails/fast_mcp"`, `"mcp/guardrails/rspec"`, `"mcp/guardrails/minitest"`)
+so the default `require` pulls in nothing optional (Constitution IV). Within the kit, the
+`checks/` layer holds all logic and loads no test framework; the RSpec and Minitest layers
+are adapters over it, which is what keeps a guarantee from being provable in one framework
+only (FR-026).
 
 ## Implementation Phasing
 

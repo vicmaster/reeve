@@ -1,36 +1,106 @@
 # Contract: Testing Kit
 
-**Stability**: public. Opt-in via `require "mcp/guardrails/rspec"` — RSpec is never a
-runtime dependency.
+**Stability**: public.
 
-```ruby
-# spec/spec_helper.rb
-require "mcp/guardrails/rspec"
-RSpec.configure { |c| c.include MCP::Guardrails::Testing::Matchers }
+The kit is three layers: framework-neutral **checks** that hold all the logic, and thin
+**front-ends** (RSpec, Minitest, plain Ruby) that adapt them. No guarantee is provable in
+one framework only (FR-026).
+
+```text
+testing/checks/*.rb        ← all the logic; plain Ruby; no test framework loaded
+testing/matchers/*.rb      ← RSpec front-end        (require "mcp/guardrails/rspec")
+testing/assertions.rb      ← Minitest front-end     (require "mcp/guardrails/minitest")
+                           ← plain Ruby: call the checks directly
 ```
 
-## `deny_access_for` (FR-016)
+## Layer 1 — Checks (the actual contract)
+
+A check is an object with `#call` returning a `Result`. It loads no test framework and
+raises nothing on failure.
 
 ```ruby
+check = MCP::Guardrails::Checks::CrossPrincipalLeak.new(
+  tool: InvoiceSearchTool, principals: [alice, bob], arguments: { query: "AC" }
+)
+result = check.call
+
+result.passed?  # => false
+result.message  # => "InvoiceSearchTool returned 3 records to User#42 that ..."
+result.details  # => { leaked: [[Invoice, 7], [Invoice, 8]], rule: "InvoicePolicy#index?" }
+```
+
+Checks shipped in v1:
+
+| Check | Asserts | Requirement |
+|-------|---------|-------------|
+| `Checks::CrossPrincipalLeak` | a tool returns no records belonging to another principal | FR-016, FR-003 |
+| `Checks::AuditCoverage` | every invocation produces exactly one ledger entry | FR-017, FR-008 |
+| `Checks::GuardDeclared` | the tool has a `guard_with` declaration | FR-002, FR-004 |
+| `Checks::RulePresent` | every entry carries a non-null `rule` | FR-009 |
+| `Checks::RedactionHolds` | declared-sensitive values appear in no entry | FR-011 |
+| `Checks::PrincipalRequired` | no resolvable principal denies without consulting the policy | FR-001 |
+| `Checks::ContractVersion` | the recorded audit-entry contract version matches the gem | FR-015 |
+
+`Checks::ALL` enumerates them; `Checks.run_all(principals:)` runs every check against every
+registered guarded tool and returns a `Report`. That is the compliance suite's engine, and
+it is callable with no test framework present at all.
+
+**Because the checks are plain objects, the same guarantees are assertable outside a test
+suite** — a rake task, a CI script, a deploy gate, or a boot-time assertion in staging:
+
+```ruby
+report = MCP::Guardrails::Checks.run_all(principals: [alice, bob])
+abort report.to_s unless report.passed?
+```
+
+## Layer 2 — RSpec front-end
+
+```ruby
+require "mcp/guardrails/rspec"
+RSpec.configure { |c| c.include MCP::Guardrails::Testing::Matchers }
+
 RSpec.describe InvoiceSearchTool do
-  let(:owner)    { create(:user) }
-  let(:stranger) { create(:user) }
-  before { create(:invoice, owner: owner) }
+  it { is_expected.to deny_access_for(stranger).with(query: "AC") }
+  it { is_expected.to audit_every_call }
+end
 
-  it { expect(described_class).to deny_access_for(stranger) }
-
-  # narrow form: assert about specific records
-  it { expect(described_class).to deny_access_for(stranger).to_see(Invoice.all) }
-
-  # with arguments the tool requires
-  it { expect(described_class).to deny_access_for(stranger).with(query: "AC") }
+RSpec.describe "MCP guardrails compliance" do
+  it_behaves_like "an mcp-guardrails compliant server"
 end
 ```
 
-Passes when invoking the tool as that principal returns none of the records in question —
-whether by denial or by empty scoping; both are correct outcomes for a stranger.
+## Layer 3 — Minitest front-end
 
-Failure message names the tool, the principal, and **the leaked record identifiers**:
+Equivalent coverage, same checks, same messages.
+
+```ruby
+require "mcp/guardrails/minitest"
+
+class InvoiceSearchToolTest < ActiveSupport::TestCase
+  include MCP::Guardrails::Testing::Assertions
+
+  test "does not leak across principals" do
+    assert_denies_access_for InvoiceSearchTool, stranger, query: "AC"
+  end
+
+  test "is audited" do
+    assert_audits_every_call InvoiceSearchTool
+  end
+end
+
+class ComplianceTest < ActiveSupport::TestCase
+  include MCP::Guardrails::Testing::ComplianceAssertions   # one method per check
+end
+```
+
+A stock `rails new` application — Minitest, no RSpec — must be able to prove every
+guarantee without adding a test framework. That is the acceptance bar for this layer, not a
+nice-to-have.
+
+## Failure messages
+
+Built by the check, not the front-end, so both frameworks and the plain-Ruby path emit the
+identical string (FR-019):
 
 ```text
 expected InvoiceSearchTool to deny access for User#42, but it returned 3 records
@@ -38,50 +108,21 @@ that principal may not see: Invoice#7, Invoice#8, Invoice#9
 (guard: InvoicePolicy, decision: allow via InvoicePolicy#index?)
 ```
 
-## `audit_every_call` (FR-017)
-
-```ruby
-it { expect(MyMcpServer).to audit_every_call }
-it { expect(InvoiceSearchTool).to audit_every_call }
-```
-
-Drives every registered tool (or the one given) through the envelope with generated
-arguments and asserts exactly one ledger entry per invocation. Detects tools that bypass
-the envelope entirely.
-
 ```text
 expected every call to be audited, but InvoiceExportTool produced 0 audit entries
 for 1 invocation — it is invoked outside MCP::Guardrails.invoke
 ```
 
-## Shared compliance suite (FR-018)
-
-```ruby
-RSpec.describe "MCP guardrails compliance" do
-  it_behaves_like "an mcp-guardrails compliant server"
-end
-```
-
-One include; every registered guarded tool is checked. The suite asserts:
-
-| Check | Source requirement |
-|-------|--------------------|
-| Every registered tool has a `guard_with` declaration | FR-002, FR-004 |
-| No tool returns records outside the invoking principal's scope, over the fixture principals | FR-003, SC-001 |
-| Every invocation produces exactly one ledger entry, allow and deny | FR-008, SC-002 |
-| Every entry carries a non-null `rule` | FR-009 |
-| Declared-sensitive argument values are absent from every entry | FR-011 |
-| An invocation with no resolvable principal denies without consulting the policy | FR-001 |
-| A tool with no declaration denies (or records `guard: "none"` if configured permissive) | FR-023 |
-| The recorded audit-entry contract version matches the installed gem's | FR-015 |
-
-The suite requires the host to define two fixture principals with disjoint records
-(`config.compliance_principals = -> { [alice, bob] }`) and nothing else.
-
 ## Constraints
 
+- Checks load no test framework; RSpec and Minitest are both development-only dependencies
+  of this gem and neither is required at runtime.
 - No MCP client, no network, no running server (FR-020).
-- Every failure message states tool, principals, expected vs actual (FR-019).
-- The kit itself is verified against deliberately-broken fixtures in this repo: a
-  cross-principal leaker and an envelope-bypassing tool. Green on the good fixture, red
-  with the right message on each bad one (SC-007).
+- The kit is verified against deliberately-broken fixtures in this repo — a cross-principal
+  leaker and an envelope-bypassing tool. Green on the control, red with the right message on
+  each (SC-007).
+- The same fixtures run through all three front-ends and must produce identical outcomes
+  and identical messages (SC-009). One shared example table drives all three, so a check
+  cannot silently work in one and not another.
+- Host setup for the compliance suite is two fixture principals with disjoint records
+  (`config.compliance_principals = -> { [alice, bob] }`) and nothing else.

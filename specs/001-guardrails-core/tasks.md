@@ -21,8 +21,9 @@ that pins the guarantee precedes each implementation task.
 - [ ] T001 Create gem skeleton: `mcp-guardrails.gemspec` (empty runtime dependency list),
       `lib/mcp-guardrails.rb`, `lib/mcp/guardrails/version.rb`, `Gemfile`, `Rakefile`,
       per plan.md structure
-- [ ] T002 [P] Add development dependencies in the Gemfile: rspec, rubocop, activerecord,
-      activesupport, sqlite3, pundit, fast-mcp — all development-only, none in the gemspec
+- [ ] T002 [P] Add development dependencies in the Gemfile: rspec, minitest, rubocop,
+      activerecord, activesupport, sqlite3, pundit, fast-mcp — all development-only, none in
+      the gemspec
 - [ ] T003 [P] Configure RuboCop (`.rubocop.yml`) and the RSpec harness
       (`spec/spec_helper.rb`) with no Rails required by default
 - [ ] T004 [P] Add GitHub Actions CI matrix over Ruby 3.2/3.3/3.4 running specs + RuboCop
@@ -161,24 +162,31 @@ fixtures; green on the first, red with the right message on each of the others.
 
 - [ ] T044 [P] [US3] [W3] Build the broken fixtures: a cross-principal leaker and an
       envelope-bypassing tool, plus a correct control tool
-- [ ] T045 [P] [US3] [W3] `deny_access_for` specs: passes on the control, fails on the
-      leaker, failure message names the leaked identifiers and the deciding rule (FR-016,
-      FR-019); `.with(...)` and `.to_see(...)` forms
-- [ ] T046 [P] [US3] [W3] `audit_every_call` specs: fails on the bypassing tool and names
-      it (FR-017)
-- [ ] T047 [P] [US3] [W3] Compliance-suite specs: every check in the contracts/testing-kit.md
-      table fires, and each fails for the right reason on a purpose-built violation
+- [ ] T045 [P] [US3] [W3] Check specs — one per check in the contracts/testing-kit.md table.
+      Each returns a `Result` with `passed?`, the exact failure message, and structured
+      details; each fails for the right reason on a purpose-built violation (FR-016, FR-017,
+      FR-019). Checks load no test framework
+- [ ] T046 [P] [US3] [W3] `Checks.run_all` / `Report` specs: every registered guarded tool
+      checked, aggregate pass/fail, human-readable report body (FR-018)
+- [ ] T047 [P] [US3] [W3] Cross-front-end parity spec: one shared example table drives the
+      same fixtures through RSpec, Minitest, and direct plain-Ruby calls; outcomes and
+      messages must be identical (SC-009, FR-026)
 - [ ] T048 [P] [US3] [W3] Isolation spec: the kit runs with no MCP client, no network, no
-      server process (FR-020)
+      server process — and the checks run with neither RSpec nor Minitest loaded (FR-020)
 
 ### Implementation
 
-- [ ] T049 [US3] [W3] `lib/mcp/guardrails/testing/matchers/deny_access_for.rb`
-- [ ] T050 [US3] [W3] `lib/mcp/guardrails/testing/matchers/audit_every_call.rb`
-- [ ] T051 [US3] [W3] `lib/mcp/guardrails/testing/compliance_suite.rb` — the shared example
-      group over the registry, driven by `config.compliance_principals`
-- [ ] T052 [US3] [W3] `lib/mcp/guardrails/rspec.rb` opt-in entry point; assert RSpec stays
-      out of the gemspec
+- [ ] T049 [US3] [W3] `lib/mcp/guardrails/testing/checks/*.rb` + `Result`/`Report` — the
+      seven checks from the contract. All logic and all failure-message construction lives
+      here; front-ends add none
+- [ ] T050 [US3] [W3] RSpec front-end: `testing/matchers/deny_access_for.rb`,
+      `testing/matchers/audit_every_call.rb`, `testing/compliance_suite.rb` shared example
+      group, and the `lib/mcp/guardrails/rspec.rb` entry point
+- [ ] T051 [US3] [W3] Minitest front-end: `testing/assertions.rb` +
+      `testing/compliance_assertions.rb` and the `lib/mcp/guardrails/minitest.rb` entry
+      point. Acceptance bar: a stock `rails new` app with no RSpec proves every guarantee
+- [ ] T052 [US3] [W3] Assert both RSpec and Minitest stay out of the gemspec; document the
+      plain-Ruby path (rake task / CI script / boot assertion) with a runnable example
 
 **Checkpoint**: the three modules are complete and independently green. Merge W1→W2→W3 with
 `/code-review` before each (Constitution: Review gate).

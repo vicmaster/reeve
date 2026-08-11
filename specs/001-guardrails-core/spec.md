@@ -222,6 +222,10 @@ become guarded and audited with no other changes.
 - **FR-019**: Failure messages MUST state the tool, the principals involved, and expected
   versus actual outcome.
 - **FR-020**: The testing kit MUST be usable without a running MCP client or network access.
+- **FR-026**: The checks underlying the testing kit MUST be expressible independently of any
+  test framework, and MUST be usable from the two testing frameworks in common use in Rails
+  applications as well as from plain Ruby (a script, a task, or a startup assertion). No
+  guarantee may be provable in one framework only.
 
 **Adoption**
 
@@ -273,6 +277,9 @@ become guarded and audited with no other changes.
   names the offending tool.
 - **SC-008**: The library loads successfully in an application with no MCP server library
   and no policy library installed.
+- **SC-009**: Every guarantee the testing kit can assert is assertable from either common
+  Rails testing framework and from plain Ruby, verified by running the same check suite
+  through all three front-ends against the same fixtures with identical outcomes.
 
 ## Assumptions
 
@@ -288,8 +295,10 @@ become guarded and audited with no other changes.
   of its own in v1.
 - v1 targets one MCP server library integration plus a plain interface; additional
   integrations are follow-on work, not part of this feature.
-- The testing kit targets the Ruby testing framework in common use for gems of this kind;
-  other frameworks are out of scope for v1.
+- The testing kit is framework-neutral at its core and ships front-ends for both testing
+  frameworks in common use in Rails applications. A team must never have to adopt a second
+  test framework to prove its guardrails hold — that would defeat the purpose of shipping
+  the checks at all.
 - Real-time alerting, dashboards, and a UI over the ledger are out of scope for v1 — the
   deliverable is a queryable ledger, not a console.
 - Rate limiting, cost control, and prompt-injection defense are out of scope; this feature
