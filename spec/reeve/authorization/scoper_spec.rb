@@ -191,6 +191,176 @@ RSpec.describe Reeve::Authorization::Scoper do
     end
   end
 
+  # Review finding: a policy scope that could not be read used to fall back to a
+  # per-record `authorize`, which is commonly permissive — set-based scoping silently
+  # became "does show? say yes". Unreadable now means denied.
+  # Review finding: `Object.const_defined?` alone treated DataPolicy, SetPolicy,
+  # FilePolicy and every anonymous policy as "named for another model", because Data, Set,
+  # File and Class are all defined constants — so the declared policy was swapped out.
+  # Review finding: grouping by `record.class` denied every STI result, because
+  # TextNotePolicy does not exist and the declared NotePolicy was never consulted.
+  # Review finding: one non-record element used to demote the whole array to the derived
+  # path, so real records rode along unscoped whenever scoped(...) had been called.
+  describe "an array holding both records and something else" do
+    def scope_mixed(items, scoped_used:)
+      tool_class.guard_with(InvoicePolicy)
+      declaration = tool_class.reeve_guard
+      Reeve::Authorization::Current.with(
+        context: context, declaration: declaration,
+        adapter: Reeve::Authorization::Adapters::Plain.new
+      ) do
+        Reeve::Authorization::Current.state.scoped_used! if scoped_used
+        scoper.scope(context: context, guard: declaration, result: items)
+      end
+    end
+
+    it "still scopes the records when a summary rides along" do
+      result = scope_mixed([@alice_invoice, @bob_invoice, { total: 2 }], scoped_used: true)
+
+      expect(result).to be_allowed
+      expect(result.records).to eq([@alice_invoice, { total: 2 }])
+      expect(result.record_ids).to eq([@alice_invoice.id.to_s])
+    end
+
+    it "denies when the non-record part was not derived from scoped(...)" do
+      result = scope_mixed([@alice_invoice, { total: 2 }], scoped_used: false)
+
+      expect(result).to be_denied
+      expect(result.decision.rule).to eq("unscoped_derived_result")
+    end
+
+    it "records the identifiers of the records it let through" do
+      result = scope_mixed([@alice_invoice, "summary"], scoped_used: true)
+
+      expect(result.record_ids).to eq([@alice_invoice.id.to_s])
+      expect(result.record_count).to eq(1)
+      expect(result).not_to be_derived
+    end
+  end
+
+  describe "records stored with single-table inheritance" do
+    it "governs every subclass with the policy written for the table" do
+      TextNote.delete_all
+      mine = TextNote.create!(body: "mine", owner_id: alice.id)
+      theirs = ImageNote.create!(body: "theirs", owner_id: bob.id)
+      also_mine = ImageNote.create!(body: "also mine", owner_id: alice.id)
+      tool_class.guard_with(NotePolicy)
+      declaration = tool_class.reeve_guard
+
+      result = scoper.scope(context: context, guard: declaration,
+                            result: [mine, theirs, also_mine])
+
+      expect(result).to be_allowed
+      expect(result.records).to contain_exactly(mine, also_mine)
+    end
+  end
+
+  describe "a policy whose name collides with a core Ruby constant" do
+    %w[Data Set File Range Process Class].each do |constant|
+      it "still uses the declared #{constant}Policy, not a convention-named one" do
+        strict = stub_const("#{constant}Policy", Class.new do
+          define_singleton_method(:name) { "#{constant}Policy" }
+          def self.authorize(*) = true
+          def self.scope(_principal, relation) = relation.none
+        end)
+        declaration = Reeve::Authorization::Declaration.new(
+          tool_class: tool_class, policy: strict, action: :index
+        )
+
+        expect(described_class.policy_for(Reeve::Authorization::Adapters::Plain.new,
+                                          declaration, Invoice)).to eq(strict)
+      end
+    end
+
+    it "uses the declared policy for an anonymous policy class" do
+      anonymous = Class.new do
+        def self.authorize(*) = true
+        def self.scope(_principal, relation) = relation.none
+      end
+      declaration = Reeve::Authorization::Declaration.new(
+        tool_class: tool_class, policy: anonymous, action: :index
+      )
+
+      expect(described_class.policy_for(Reeve::Authorization::Adapters::Plain.new,
+                                        declaration, Invoice)).to eq(anonymous)
+    end
+
+    it "still defers to a conventional policy for a genuinely different model" do
+      declaration = Reeve::Authorization::Declaration.new(
+        tool_class: tool_class, policy: InvoicePolicy, action: :index
+      )
+
+      expect(described_class.policy_for(Reeve::Authorization::Adapters::Plain.new,
+                                        declaration, Memo)).to eq(MemoPolicy)
+    end
+  end
+
+  describe "when the policy scope is not a relation" do
+    let(:array_policy) do
+      stub_const("ArrayScopePolicy", Class.new do
+        def self.name = "ArrayScopePolicy"
+        # Deliberately permissive, as real policies' show? checks often are.
+        def self.authorize(*) = true
+        def self.scope(principal, relation) = relation.select { |r| r.owner_id == principal.id }
+      end)
+    end
+
+    def scope_with(policy, result)
+      tool_class.guard_with(policy)
+      declaration = tool_class.reeve_guard
+      Reeve::Authorization::Current.with(
+        context: context, declaration: declaration,
+        adapter: Reeve::Authorization::Adapters::Plain.new
+      ) { scoper.scope(context: context, guard: declaration, result: result) }
+    end
+
+    it "still filters by the scope when it resolves to an array" do
+      result = scope_with(array_policy, [@alice_invoice, @bob_invoice])
+
+      expect(result).to be_allowed
+      expect(result.records).to eq([@alice_invoice])
+    end
+
+    it "denies rather than falling back to a permissive per-record check" do
+      exploding = stub_const("UnreadableScopePolicy", Class.new do
+        def self.name = "UnreadableScopePolicy"
+        def self.authorize(*) = true
+        def self.scope(_principal, _relation) = raise(ActiveRecord::StatementInvalid, "no such column: id")
+      end)
+      expect { scope_with(exploding, [@alice_invoice, @bob_invoice]) }
+        .to raise_error(StandardError) # the envelope turns this into policy_error
+    end
+  end
+
+  describe "the action used for a per-record check" do
+    # Review finding: this was hardcoded to :show, so a host whose policies speak :read
+    # fell through to a catch-all `else` and permitted everything.
+    it "asks the policy about the action the guard declared" do
+      asked = []
+      recording = stub_const("RecordingActionPolicy", Class.new do
+        define_singleton_method(:authorize) do |_p, action, record|
+          asked << action
+          !record.nil?
+        end
+        def self.name = "RecordingActionPolicy"
+        def self.scope(_principal, relation) = relation
+      end)
+      plain_record = stub_const("PlainThing", Struct.new(:id, :owner_id))
+      tool_class.guard_with(recording, action: :read)
+
+      Reeve::Authorization::Current.with(
+        context: context, declaration: tool_class.reeve_guard,
+        adapter: Reeve::Authorization::Adapters::Plain.new
+      ) do
+        scoper.scope(context: context, guard: tool_class.reeve_guard,
+                     result: [plain_record.new(1, alice.id)])
+      end
+
+      expect(asked).to include(:read)
+      expect(asked).not_to include(:show)
+    end
+  end
+
   describe "a derived value" do
     # R4: safe only when the tool asked for the scoped relation rather than the model.
     it "denies a count the tool computed without scoped(...)" do

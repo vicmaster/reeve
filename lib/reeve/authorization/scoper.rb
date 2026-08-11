@@ -46,13 +46,50 @@ module Reeve
       # `InvoicePolicy` on a tool that also returned `Memo`s. A policy whose name matches
       # no model (`LeakyPolicy`, `ApplicationPolicy`) is generic, and governs whatever the
       # tool it was declared on returns.
+      #
+      # "Exists" means *is a model*, not merely "is a defined constant". Asking
+      # `Object.const_defined?` alone handed `DataPolicy`, `SetPolicy`, `FilePolicy` and
+      # every anonymous policy class (whose name falls back to "Class") to a
+      # convention-named policy instead, because `Data`, `Set`, `File` and `Class` are all
+      # defined in Ruby — the same silent substitution this method exists to prevent.
       def self.declared_for_other_type?(declaration, record_class)
         named = declaration.policy_name.to_s.sub(/Policy\z/, "")
-        return false if named.empty? || named == record_class.name.to_s
+        return false if named.empty? || named == base_class_name(record_class)
 
-        Object.const_defined?(named)
+        target = resolve_constant(named)
+        return false unless model_like?(target)
+
+        target != base_class(record_class)
+      end
+
+      def self.resolve_constant(name)
+        Object.const_defined?(name) ? Object.const_get(name) : nil
       rescue NameError
-        false
+        nil
+      end
+
+      # A model, not just any class: something records are actually fetched from.
+      def self.model_like?(target)
+        return false unless target.is_a?(Class)
+        return true if defined?(::ActiveRecord::Base) && target <= ::ActiveRecord::Base
+
+        target.respond_to?(:all)
+      end
+
+      # Single-table inheritance: `TextComment` is governed by `CommentPolicy`, because
+      # the policy is written for the table, not for each subclass. Comparing subclasses
+      # directly denied every STI result with `unknown_record_type`.
+      def self.base_class(record_class)
+        return record_class unless record_class.is_a?(Class)
+        return record_class unless record_class.respond_to?(:base_class)
+
+        record_class.base_class
+      rescue StandardError
+        record_class
+      end
+
+      def self.base_class_name(record_class)
+        base_class(record_class).name.to_s
       end
 
       def self.model_class(model_or_relation)
@@ -101,19 +138,57 @@ module Reeve
         allow_records(scoped, relation_class(relation).name, record_ids(scoped))
       end
 
-      def scope_array(context, guard, records, adapter)
-        return ScopeResult.allow(records: [], record_count: 0) if records.empty?
-        return scope_derived(records, Current.state) unless records.all? { |item| record?(item) }
+      # An array can hold records, non-records, or both. Each part is judged on its own
+      # terms: records are scoped, and anything else is a derived value, allowed only if
+      # the tool asked for a scoped relation.
+      #
+      # This used to hand the whole array to the derived path the moment one element was
+      # not a record, so a tool returning `[invoice, invoice, { total: 2 }]` had its
+      # invoices returned entirely unscoped as soon as it had called `scoped(...)`
+      # anywhere in its body — with no identifiers in the ledger to show for it.
+      def scope_array(context, guard, items, adapter)
+        return ScopeResult.allow(records: [], record_count: 0) if items.empty?
 
+        records, others = items.partition { |item| record?(item) }
+        return scope_derived(items, Current.state) if records.empty?
+        return unscoped_derived(others.first) unless derivation_established?(others)
+
+        kept = keep_in_scope(context, guard, records, adapter)
+        kept.is_a?(ScopeResult) ? kept : allow_survivors(items, kept)
+      end
+
+      def derivation_established?(others)
+        others.empty? || Current.state&.scoped_used? || false
+      end
+
+      # Keeps the tool's own ordering: the caller asked for a list, not a set.
+      def allow_survivors(items, kept)
+        surviving = items.select { |item| record?(item) ? kept.include?(item) : true }
+
+        allow_records(surviving, dominant_type(kept), kept.map { |record| identifier(record) })
+      end
+
+      # The records the principal may see, or a denial when some type has no policy.
+      def keep_in_scope(context, guard, records, adapter)
         kept = []
-        records.group_by(&:class).each do |record_class, group|
+        groups = records.group_by { |record| self.class.base_class(record.class) }
+
+        groups.each do |record_class, group|
           policy = policy_for!(adapter, guard, record_class)
           return unpoliced(record_class) if policy.nil?
 
           kept.concat(in_scope(context, policy, adapter, record_class, group))
         end
 
-        allow_records(kept, dominant_type(kept), kept.map { |record| identifier(record) })
+        kept
+      end
+
+      def unscoped_derived(example)
+        ScopeResult.deny(
+          rule: Decision::UNSCOPED_DERIVED_RESULT,
+          detail: "the tool returned a #{example.class} alongside records without calling " \
+                  "scoped(...), so what it was derived from cannot be established"
+        )
       end
 
       # FR-006: a record outside the scope is never returned and never distinguished from
@@ -143,28 +218,60 @@ module Reeve
                           record_count: state.scoped_source_count || 0)
       end
 
-      # Two ways to answer "may this principal see this record?". For ActiveRecord, ask
-      # the policy scope once and intersect identifiers — one query for the whole set.
-      # For anything else there is no relation to narrow, so each record is authorized on
-      # its own. The second path is what makes the core usable with no database at all.
+      # "May this principal see these records?" has two honest answers and one dishonest
+      # one. For a model backed by a relation, ask the policy scope which of *these*
+      # identifiers it admits. For a type with no relation to narrow, authorize each
+      # record on its own — that is what makes the core usable with no database.
+      #
+      # The dishonest answer, which this used to give: if the scope could not be read,
+      # fall back to a per-record `authorize` and keep whatever it permits. A policy whose
+      # `Scope#resolve` ends in `.to_a`, or a model whose primary key is not `id`, would
+      # silently downgrade set-based scoping to a `show?` check that is commonly
+      # `user.present?` — every record kept, recorded as properly scoped. A scope we
+      # cannot read is now a denial (Constitution I: unclear means no).
       def in_scope(context, policy, adapter, record_class, records)
-        visible = visible_ids_for(context, policy, adapter, record_class)
-        if visible.nil?
-          return records.select do |record|
-            allowed?(adapter, context, policy, record)
-          end
+        unless relation_source?(record_class)
+          return authorize_each(adapter, context, policy,
+                                records)
         end
 
+        visible = visible_ids_among(context, policy, adapter, record_class, records)
         records.select { |record| visible.include?(identifier(record)) }
       end
 
-      def visible_ids_for(context, policy, adapter, record_class)
-        return nil unless active_record_class?(record_class)
+      def authorize_each(adapter, context, policy, records)
+        records.select { |record| allowed?(adapter, context, policy, record) }
+      end
 
+      # Bounded by the records actually being checked, never by the table: a single-record
+      # lookup against a scope of two million rows must not pluck two million ids.
+      def visible_ids_among(context, policy, adapter, record_class, records)
         scoped = adapter.scope(
           principal: context.principal, policy: policy, relation: record_class.all
         )
-        scoped.nil? ? nil : visible_ids(scoped)
+        raise Error, "#{policy} returned no scope for #{record_class}" if scoped.nil?
+
+        ids = records.map { |record| record_id(record) }.compact
+        return [] if ids.empty?
+
+        narrowed = scoped.respond_to?(:where) ? scoped.where(id: ids) : scoped
+        identifiers_of(narrowed)
+      end
+
+      # Raises rather than returning nil: the caller cannot tell "nothing is visible" from
+      # "I could not find out", and only one of those is safe to act on.
+      def identifiers_of(scoped)
+        return scoped.pluck(:id).map(&:to_s) if scoped.respond_to?(:pluck)
+
+        Array(scoped).map { |record| identifier(record) }
+      rescue StandardError => e
+        raise Error,
+              "could not read the policy scope to establish record visibility " \
+              "(#{e.class}: #{e.message})"
+      end
+
+      def relation_source?(record_class)
+        active_record_class?(record_class)
       end
 
       def active_record_class?(record_class)
@@ -173,22 +280,24 @@ module Reeve
           record_class <= ::ActiveRecord::Base
       end
 
+      # The action the guard declared, not a hardcoded one: a host whose policies speak
+      # `:read` would otherwise fall through to a catch-all `else` and permit everything.
       def allowed?(adapter, context, policy, record)
         adapter.authorize(
-          principal: context.principal, policy: policy, action: :show, record: record
+          principal: context.principal, policy: policy, action: current_action, record: record
         ).allowed?
       end
 
-      def visible_ids(scoped)
-        return nil unless relation?(scoped)
+      def current_action
+        Current.state&.declaration&.action || Reeve.config.default_action
+      end
 
-        scoped.pluck(:id).map(&:to_s)
-      rescue StandardError
-        nil
+      def visible_ids(scoped)
+        identifiers_of(scoped)
       end
 
       def policy_for!(adapter, guard, record_class)
-        self.class.policy_for(adapter, guard, record_class)
+        self.class.policy_for(adapter, guard, self.class.base_class(record_class))
       end
 
       def unpoliced(record_class)
@@ -216,6 +325,10 @@ module Reeve
         return ids if ids
 
         Array(scoped).map { |record| identifier(record) }
+      end
+
+      def record_id(record)
+        record.respond_to?(:id) ? record.id : nil
       end
 
       def identifier(record)
