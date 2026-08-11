@@ -80,7 +80,8 @@ module Reeve
       message = "reeve could not record invocation #{@invocation_id}"
       message = "#{message}: #{cause.message}" if cause
       if during
-        message = "#{message} (while the invocation was already failing with #{during.class}: #{during.message})"
+        message = "#{message} (while the invocation was already failing with " \
+                  "#{during.class}: #{during.message})"
       end
       super(message)
     end
