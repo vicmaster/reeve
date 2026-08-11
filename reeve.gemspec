@@ -32,6 +32,8 @@ Gem::Specification.new do |spec|
 
   spec.files = Dir[
     "lib/**/*.rb",
+    # Generator templates: without these `rails g reeve:install` has nothing to copy.
+    "lib/**/*.tt",
     "README.md",
     "CHANGELOG.md",
     "LICENSE.txt"
