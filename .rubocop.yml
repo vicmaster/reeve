@@ -40,10 +40,23 @@ Lint/ConstantDefinitionInBlock:
     - "spec/**/*"
 
 # The envelope is one method precisely because there must be only one path through it;
-# splitting it to satisfy a metric would defeat the point.
+# splitting it to satisfy a metric would defeat the point. The scoper is one class for the
+# same reason: it is the single dispatch over what a tool can return.
 Metrics/ClassLength:
   Exclude:
     - "lib/reeve/invocation.rb"
+    - "lib/reeve/authorization/scoper.rb"
+
+# Dispatching on the shape of a tool's return value is inherently branchy; the branches
+# are the contract's return-value table, one for one.
+Metrics/CyclomaticComplexity:
+  Max: 8
+
+# Policy objects in the specs implement a host-side protocol (`authorize`, `scope`);
+# renaming them to satisfy a predicate convention would misstate the protocol.
+Naming/PredicateMethod:
+  Exclude:
+    - "spec/**/*"
 
 Style/Documentation:
   Enabled: true

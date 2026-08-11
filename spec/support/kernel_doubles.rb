@@ -100,3 +100,18 @@ class CapturingLogger
     @warnings << (message || yield)
   end
 end
+
+# The concurrency specs write from several threads at once.
+class ThreadSafeRecorder
+  attr_reader :entries
+
+  def initialize
+    @entries = []
+    @mutex = Mutex.new
+  end
+
+  def record(attributes)
+    @mutex.synchronize { @entries << attributes }
+    attributes
+  end
+end

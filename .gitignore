@@ -11,3 +11,6 @@
 
 # Resolved per-machine, not part of the gem.
 /Gemfile.lock
+
+# Agent worktrees, created per background task.
+.claude/worktrees/

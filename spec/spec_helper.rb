@@ -2,7 +2,10 @@
 
 require "reeve"
 
-Dir[File.expand_path("support/**/*.rb", __dir__)].each { |file| require file }
+# Only the always-on helpers load here. Anything under support/optional/ is required by
+# the specs that need it — the ActiveRecord harness in particular must not be loaded for
+# specs that prove the core works without it.
+Dir[File.expand_path("support/*.rb", __dir__)].each { |file| require file }
 
 RSpec.configure do |config|
   config.expect_with(:rspec) { |expectations| expectations.syntax = :expect }
@@ -13,5 +16,8 @@ RSpec.configure do |config|
   Kernel.srand config.seed
 
   # Configuration is process-wide; no example may leak into the next.
-  config.before { Reeve.reset_configuration! }
+  config.before do
+    Reeve.reset_configuration!
+    Reeve.reset_registry!
+  end
 end
