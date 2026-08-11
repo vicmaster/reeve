@@ -1,0 +1,63 @@
+# Reeve
+
+**Authentication says who's at the door. Reeve decides what they can touch, and remembers
+what they touched.**
+
+A Ruby gem that makes it safe for a Rails application to expose MCP tools to AI agents:
+declarative per-record authorization, an append-only audit ledger, and a testing kit that
+proves both hold.
+
+> **Status: 0.0.1 is a placeholder release reserving the gem name. There is no working
+> code yet.** Development is in progress — don't install this expecting it to do anything.
+
+*A reeve is an official who acts with delegated authority on behalf of someone else — the
+root of "sheriff" (shire-reeve). That delegation is exactly what this gem governs: an agent
+acting for a human, allowed to reach only what that human may reach.*
+
+*Developed under the working name `mcp-guardrails`.*
+
+## The problem
+
+The Ruby MCP server stack — the official [`mcp`](https://github.com/modelcontextprotocol/ruby-sdk)
+gem, [fast-mcp](https://github.com/yjacquin/fast-mcp), and
+[ActionMCP](https://github.com/seuros/actionmcp) — is healthy and consolidating. All three
+authenticate the *connection*. None of them scope what an authenticated agent may **see per
+person**, none produce a compliance-grade audit trail, and none ship a way to prove either
+in CI.
+
+That's the gap Reeve fills. It's an extension layer, not a competitor — it rides all three.
+
+## The shape of it
+
+```ruby
+class InvoiceSearchTool < FastMcp::Tool
+  guard_with InvoicePolicy          # the only line you add
+
+  def call(query:)
+    Invoice.where("number LIKE ?", "%#{query}%")
+  end
+end
+```
+
+Three things then hold:
+
+1. **Deny by default.** The tool returns only invoices the acting principal may see. No
+   principal, no guard, or a policy error means no records — never a silent pass.
+2. **Every call leaves a trace.** One append-only ledger row per invocation, allowed or
+   denied, naming the agent, the principal, the arguments, what came back, and the rule
+   that decided.
+3. **Provable in CI.** `expect(tool).to deny_access_for(stranger)` in RSpec,
+   `assert_denies_access_for` in Minitest, or the checks called directly from a rake task.
+
+## Planned for v1
+
+- Per-record authorization bridging Pundit or plain policy objects
+- Append-only audit ledger with a query interface and an install generator
+- Testing kit: framework-neutral checks with RSpec, Minitest, and plain-Ruby front-ends
+- fast-mcp adapter, plus a plain interface for everyone else
+
+Ruby 3.0+, Rails 7.0+. No runtime dependencies.
+
+## License
+
+MIT. See [LICENSE.txt](LICENSE.txt).

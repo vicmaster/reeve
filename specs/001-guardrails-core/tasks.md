@@ -18,7 +18,7 @@ that pins the guarantee precedes each implementation task.
 
 **Purpose**: A gem skeleton that loads and a CI that runs.
 
-- [ ] T001 Create gem skeleton: `reeve.gemspec` (empty runtime dependency list),
+- [x] T001 Create gem skeleton: `reeve.gemspec` (empty runtime dependency list),
       `lib/reeve.rb`, `lib/reeve/version.rb`, `Gemfile`, `Rakefile`,
       per plan.md structure
 - [ ] T002 [P] Add development dependencies in the Gemfile: rspec, minitest, rubocop,
