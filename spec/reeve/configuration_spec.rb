@@ -166,6 +166,22 @@ RSpec.describe Reeve::Configuration do
       end
     end
 
+    describe "#compliance_principals=" do
+      it "accepts a callable, because fixtures do not exist when the helper loads" do
+        expect { config.compliance_principals = -> { %i[alice bob] } }.not_to raise_error
+      end
+
+      it "accepts an array" do
+        config.compliance_principals = %i[alice bob]
+        expect(config.compliance_principals).to eq(%i[alice bob])
+      end
+
+      it "rejects anything else" do
+        expect { config.compliance_principals = :alice }
+          .to raise_error(ArgumentError, /compliance_principals/)
+      end
+    end
+
     describe "#logger=" do
       it "accepts anything that responds to #warn" do
         expect { config.logger = Class.new { def warn(message); end }.new }.not_to raise_error
@@ -215,7 +231,8 @@ RSpec.describe Reeve::Configuration do
     it "exposes every setting for inspection" do
       expect(config.to_h.keys).to contain_exactly(
         :principal_resolver, :unguarded_tools, :audit_failure_mode, :redact_arguments,
-        :max_recorded_ids, :policy_adapter, :default_action, :audit_recorder, :logger
+        :max_recorded_ids, :policy_adapter, :default_action, :audit_recorder, :logger,
+        :compliance_principals
       )
     end
   end

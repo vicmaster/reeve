@@ -31,7 +31,7 @@ module Reeve
       attr_writer :compliance_principals
 
       def compliance_principals
-        source = @compliance_principals
+        source = @compliance_principals || Reeve.config.compliance_principals
         raise ConfigurationError, missing_principals_message if source.nil?
 
         principals = Array(source.respond_to?(:call) ? source.call : source)
@@ -41,7 +41,7 @@ module Reeve
       end
 
       def compliance_principals?
-        !@compliance_principals.nil?
+        !(@compliance_principals || Reeve.config.compliance_principals).nil?
       end
 
       def reset!

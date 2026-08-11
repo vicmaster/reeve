@@ -24,6 +24,7 @@ module Reeve
     SETTINGS = %i[
       principal_resolver unguarded_tools audit_failure_mode redact_arguments
       max_recorded_ids policy_adapter default_action audit_recorder logger
+      compliance_principals
     ].freeze
 
     attr_reader(*SETTINGS)
@@ -38,6 +39,20 @@ module Reeve
       @default_action     = :index
       @audit_recorder     = nil
       @logger             = nil
+      @compliance_principals = nil
+    end
+
+    # Two fixture principals with disjoint records — the only host setup the compliance
+    # suite needs (contracts/testing-kit.md). A callable rather than a value, because in a
+    # Rails test suite the fixtures do not exist yet when the helper is loaded.
+    def compliance_principals=(principals)
+      unless principals.nil? || principals.respond_to?(:call) || principals.is_a?(Array)
+        raise ArgumentError,
+              "compliance_principals must be an Array or a callable returning one, " \
+              "got #{principals.inspect}"
+      end
+
+      @compliance_principals = principals
     end
 
     def unguarded_tools=(mode)

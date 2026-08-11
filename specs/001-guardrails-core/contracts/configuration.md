@@ -37,6 +37,11 @@ Reeve.configure do |config|
 
   # Optional sink for warnings (unguarded tools, degraded audit mode).
   config.logger = Rails.logger
+
+  # Test-environment only: two fixture principals with disjoint records, the sole host
+  # setup the compliance suite needs (contracts/testing-kit.md). A callable, because in a
+  # Rails test suite the fixtures do not exist when the helper is loaded.
+  config.compliance_principals = -> { [users(:alice), users(:bob)] }
 end
 ```
 

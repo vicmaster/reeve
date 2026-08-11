@@ -27,16 +27,32 @@ module Reeve
         scoped
       end
 
+      # The declared policy governs, full stop — a declaration is an instruction, not a
+      # hint. Only a result mixing several types needs more than one policy, and only the
+      # types the declaration is *not* named for are resolved by convention; a type with
+      # no policy denies the call (unknown_record_type).
+      #
+      # Inferring a policy from the record's class in the single-type case would mean a
+      # tool declaring `guard_with LeakyPolicy` was silently enforced by `InvoicePolicy`:
+      # the guard the developer declared would not be the guard that ran.
       def self.policy_for(adapter, declaration, record_class)
-        return declaration.policy if record_class.nil? || declared_type?(declaration, record_class)
+        return declaration.policy if record_class.nil?
+        return declaration.policy unless declared_for_other_type?(declaration, record_class)
 
         adapter.policy_for(record_class) || nil
       end
 
-      # A declared policy governs the type it is named for. `InvoicePolicy` governs
-      # `Invoice`; anything else has to be resolvable independently or the call denies.
-      def self.declared_type?(declaration, record_class)
-        declaration.policy_name.to_s.sub(/Policy\z/, "") == record_class.name.to_s
+      # True only when the declaration names a *different* model that actually exists —
+      # `InvoicePolicy` on a tool that also returned `Memo`s. A policy whose name matches
+      # no model (`LeakyPolicy`, `ApplicationPolicy`) is generic, and governs whatever the
+      # tool it was declared on returns.
+      def self.declared_for_other_type?(declaration, record_class)
+        named = declaration.policy_name.to_s.sub(/Policy\z/, "")
+        return false if named.empty? || named == record_class.name.to_s
+
+        Object.const_defined?(named)
+      rescue NameError
+        false
       end
 
       def self.model_class(model_or_relation)

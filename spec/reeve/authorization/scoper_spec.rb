@@ -116,6 +116,38 @@ RSpec.describe Reeve::Authorization::Scoper do
     end
   end
 
+  # A declaration is an instruction, not a hint. Reeve once inferred a policy from the
+  # record's class name whenever the declared policy was not named for that class, which
+  # meant `guard_with LeakyPolicy` on a tool returning invoices was silently enforced by
+  # InvoicePolicy — the guard the developer declared was not the guard that ran, and the
+  # testing kit reported green.
+  describe "which policy actually governs" do
+    let(:permissive) do
+      stub_const("PermissivePolicy", Class.new do
+        def self.name = "PermissivePolicy"
+        def self.authorize(*) = true
+        def self.scope(_principal, relation) = relation
+      end)
+    end
+
+    let(:guard) do
+      tool_class.guard_with(permissive)
+      tool_class.reeve_guard
+    end
+
+    it "uses the declared policy even when its name matches no model" do
+      expect(described_class.policy_for(Reeve::Authorization::Adapters::Plain.new, guard, Invoice))
+        .to eq(permissive)
+    end
+
+    it "returns what that policy permits, rather than what a same-named policy would" do
+      result = scope(Invoice.all)
+
+      expect(result).to be_allowed
+      expect(result.records.to_a).to contain_exactly(@alice_invoice, @bob_invoice)
+    end
+  end
+
   describe "mixed record types" do
     it "scopes each type by its own policy" do
       alice_memo = Memo.create!(body: "mine", owner_id: alice.id)
