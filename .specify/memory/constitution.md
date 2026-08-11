@@ -21,6 +21,10 @@ Sync Impact Report
   - ✅ .claude/commands/speckit.*.md — no outdated agent-specific references
 - Deferred TODOs: none
 
+Amendment note (2026-08-11): Principle V previously named a specific proprietary system.
+Generalized to "any employer or client codebase" before the repository was published —
+the principle is unchanged and states better without the name.
+
 Amendment 1.0.1 (2026-08-11) — PATCH, naming and platform floor only:
 - Project renamed `mcp-guardrails` → `reeve`. Rationale: "MCP" and "guardrails" are
   saturated terms, and `MCP::Guardrails` would have reopened the official `mcp` gem's
@@ -95,9 +99,9 @@ amplifiers.
 
 This gem is written clean-room with respect to any employer or client codebase. No code,
 class or method names, database schemas, migration structures, configuration shapes, or
-copied documentation from any employer or client codebase may enter this
-repository. General, publicly-known patterns — policy objects, scopes, ledger tables —
-are permitted and MUST be independently expressed.
+copied documentation from such a system may enter this repository. General,
+publicly-known patterns — policy objects, scopes, ledger tables — are permitted and MUST
+be independently expressed.
 
 *Rationale*: The gem's value is that it can be published and adopted freely. A single
 provenance question would end that permanently.

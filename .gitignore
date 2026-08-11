@@ -2,3 +2,9 @@
 /tmp/
 *.gem
 .DS_Store
+
+# Local-only planning doc — personal strategy notes, deliberately not published.
+/PROJECT-BRIEF.md
+
+# Local agent config
+.claude/settings.local.json
