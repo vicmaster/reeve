@@ -8,3 +8,6 @@
 
 # Local agent config
 .claude/settings.local.json
+
+# Resolved per-machine, not part of the gem.
+/Gemfile.lock

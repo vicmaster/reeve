@@ -31,6 +31,8 @@ Reeve.configure do |config|
 
   # Where entries are written. Swappable for a non-ActiveRecord ledger;
   # must respond to #record(entry_attributes) and raise on failure.
+  # Defaults to nil, which resolves to Reeve::Audit::Recorder at invocation time —
+  # the default cannot be the constant itself, since the core loads without ActiveRecord.
   config.audit_recorder = Reeve::Audit::Recorder
 
   # Optional sink for warnings (unguarded tools, degraded audit mode).

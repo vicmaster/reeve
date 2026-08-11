@@ -42,9 +42,37 @@ match on them):
 - `unscoped_derived_result` — non-record return without `scoped(...)` (R4)
 - `out_of_scope_record` — single-record fetch outside scope (FR-006)
 - `audit_write_failed` — ledger write failed in default mode (FR-012)
+- `tool_error` — the tool body raised after being allowed (added during T015; see below)
 
 Policy-sourced rules use the adapter's own naming, e.g. `InvoicePolicy#index?` or
 `InvoicePolicy::Scope`.
+
+One reserved **allow** rule, kept separate from the deny list above:
+
+- `unguarded_tool` — a tool with no `guard_with`, permitted because the host opted into
+  `unguarded_tools = :allow_with_warning`. Recorded with `guard: "none"`.
+
+**`tool_error` (added 2026-08-11, T015)**: when a policy allows an invocation and the tool
+body then raises, the entry is recorded with `outcome: "deny"` and rule `tool_error`. The
+authorization outcome was an allow, but no records reached the agent, and `outcome` answers
+the operational question the ledger exists for — *did data go out?* The original exception
+propagates to the caller untouched; only the ledger reinterprets it.
+
+### ScopeResult
+
+What a scoper returns to the envelope. Not persisted; it exists so the envelope reads
+records out of the scoping step rather than out of the tool's return value, which is how
+invariant 3 holds by construction.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `decision` | Decision | Allow (rule `scoped`) or a deny carrying its own rule. |
+| `records` | any | The value the caller receives. `nil` on a deny. |
+| `record_type` | String, nil | Nil for derived results. |
+| `record_ids` | Array<String> | Empty for derived results and denials. |
+| `record_count` | Integer | True total; defaults to `record_ids.size`. |
+| `truncated` | Boolean | Set by the scoper when it capped the identifiers. |
+| `derived` | Boolean | The result came from `scoped(...)` rather than records. |
 
 ### GuardDeclaration
 

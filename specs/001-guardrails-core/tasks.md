@@ -21,13 +21,13 @@ that pins the guarantee precedes each implementation task.
 - [x] T001 Create gem skeleton: `reeve.gemspec` (empty runtime dependency list),
       `lib/reeve.rb`, `lib/reeve/version.rb`, `Gemfile`, `Rakefile`,
       per plan.md structure
-- [ ] T002 [P] Add development dependencies in the Gemfile: rspec, minitest, rubocop,
+- [x] T002 [P] Add development dependencies in the Gemfile: rspec, minitest, rubocop,
       activerecord, activesupport, sqlite3, pundit, fast-mcp — all development-only, none in
       the gemspec
-- [ ] T003 [P] Configure RuboCop (`.rubocop.yml`) and the RSpec harness
+- [x] T003 [P] Configure RuboCop (`.rubocop.yml`) and the RSpec harness
       (`spec/spec_helper.rb`) with no Rails required by default
-- [ ] T004 [P] Add GitHub Actions CI matrix over Ruby 3.0/3.2/3.4 running specs + RuboCop
-- [ ] T005 Add a load-safety spec asserting `require "reeve"` succeeds with no
+- [x] T004 [P] Add GitHub Actions CI matrix over Ruby 3.0/3.2/3.4 running specs + RuboCop
+- [x] T005 Add a load-safety spec asserting `require "reeve"` succeeds with no
       ActiveRecord, no Pundit, and no fast-mcp loaded (SC-008) — must fail before T001 lands
 - [x] T006 [P] Claim `reeve` on rubygems.org with a 0.0.1 skeleton release. DONE 2026-08-11 — published, owner `vicmaster`, zero runtime deps. Verified
       UNCLAIMED 2026-08-11 — it is a short common word with no MCP association, so the
@@ -43,27 +43,36 @@ that pins the guarantee precedes each implementation task.
 **Purpose**: The contracts all three modules build against. **Sequential and frozen before
 the parallel batch** — plan.md treats a kernel change during the batch as stop-the-line.
 
-- [ ] T007 Write specs for `Decision`: allow/deny construction, `rule` required and never
+- [x] T007 Write specs for `Decision`: allow/deny construction, `rule` required and never
       nil, reserved rule identifiers from data-model.md
-- [ ] T008 Implement `lib/reeve/decision.rb` per data-model.md
-- [ ] T009 [P] Write specs for `Configuration`: defaults, per-setting validation table in
+- [x] T008 Implement `lib/reeve/decision.rb` per data-model.md
+- [x] T009 [P] Write specs for `Configuration`: defaults, per-setting validation table in
       contracts/configuration.md, unknown setting raises, re-`configure` overrides
-- [ ] T010 Implement `lib/reeve/configuration.rb` + `Reeve.configure`
-- [ ] T011 [P] Write specs for `Context`: required/defaulted fields, unknown agent defaults
+- [x] T010 Implement `lib/reeve/configuration.rb` + `Reeve.configure`
+- [x] T011 [P] Write specs for `Context`: required/defaulted fields, unknown agent defaults
       to `"unknown"`, nil principal permitted at construction (denial happens in the envelope)
-- [ ] T012 Implement `lib/reeve/context.rb`
-- [ ] T013 [P] Implement `lib/reeve/errors.rb` — `DeniedError` exposing
+- [x] T012 Implement `lib/reeve/context.rb`
+- [x] T013 [P] Implement `lib/reeve/errors.rb` — `DeniedError` exposing
       `#tool_name`, `#principal_id`, `#rule`, `#detail`, message naming all four, plus a
       spec asserting the message never reveals record existence (FR-006)
-- [ ] T014 Write envelope specs from the data-model.md state diagram: every path terminates
+- [x] T014 Write envelope specs from the data-model.md state diagram: every path terminates
       in exactly one audit write attempt, every deny carries a rule, no path returns records
       without scoping, principal state cleared in `ensure` even when the tool raises
-- [ ] T015 Implement `lib/reeve/invocation.rb` — the single funnel: resolve
+- [x] T015 Implement `lib/reeve/invocation.rb` — the single funnel: resolve
       principal → look up guard → authorize → execute → scope → record → return/raise.
       Depends on T008, T010, T012, T013. Collaborators (registry, scoper, recorder) are
       injected and null-object-defaulted so the kernel is testable before the modules exist
-- [ ] T016 Freeze the kernel: tag the commit and note it in plan.md. Any later change to
-      T008/T010/T012/T015 signatures halts the parallel batch
+- [x] T016 Freeze the kernel: tag the commit and note it in plan.md. Any later change to
+      T008/T010/T012/T015 signatures halts the parallel batch.
+      DONE 2026-08-11 — 148 examples green, RuboCop clean. Frozen surface:
+      `Decision.allow/deny(rule:, detail:)`, `Configuration` (9 settings) + `Reeve.configure`,
+      `Context.new(tool_name:, principal:, agent:, arguments:, metadata:, invoked_at:,
+      invocation_id:)`, `ScopeResult.allow/deny`, `Invocation.call(context, registry:,
+      authorizer:, scoper:, recorder:, config:, &tool)`, and the four collaborator protocols:
+      `registry#guard_for(tool_name)`, `authorizer#authorize(context:, guard:)`,
+      `scoper#scope(context:, guard:, result:)`, `recorder#record(attributes)`.
+      Two additions beyond the original scope, both recorded in data-model.md: the
+      `ScopeResult` value object, and the `tool_error` reserved rule
 
 **Checkpoint**: kernel green and frozen. The Phase-2 parallel batch may start.
 
