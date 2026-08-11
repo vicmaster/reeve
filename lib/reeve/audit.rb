@@ -38,9 +38,22 @@ module Reeve
 
         Reeve::Authorization::Registry
       end
+
+      # contracts/configuration.md documents `audit_recorder` as defaulting to nil, "which
+      # resolves to Reeve::Audit::Recorder at invocation time — the default cannot be the
+      # constant itself, since the core loads without ActiveRecord". This is that
+      # resolution, performed at the first moment the constant is known to exist: the
+      # require of this file. A host that named its own recorder keeps it.
+      def install!(config = Reeve.config)
+        config.audit_recorder ||= Recorder
+        config
+      end
     end
   end
 end
 
 require_relative "audit/redactor"
 require_relative "audit/entry"
+require_relative "audit/recorder"
+
+Reeve::Audit.install!

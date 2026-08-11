@@ -65,6 +65,20 @@ module Ledger
 
     def clean!
       Reeve::Audit::Entry.delete_all
+      scratch.delete_all
+    end
+
+    # A throwaway table standing in for the host's own data, so a spec about a tool that
+    # rolls its work back can assert the rollback happened rather than assume it.
+    def scratch
+      @scratch ||= begin
+        connect!
+        connection = ActiveRecord::Base.connection
+        unless connection.table_exists?(:ledger_scratch)
+          connection.create_table(:ledger_scratch) { |t| t.string :name }
+        end
+        Class.new(ActiveRecord::Base) { self.table_name = "ledger_scratch" }
+      end
     end
 
     def indexes
