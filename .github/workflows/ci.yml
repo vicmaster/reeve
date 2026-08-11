@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  # Feature branches are where the work happens, so they get CI too — waiting for a PR
+  # to find out a Ruby 3.0 incompatibility is finding out too late.
   push:
-    branches: [main]
   pull_request:
 
 jobs:
