@@ -41,34 +41,50 @@ module Reeve
       # +principals+ must be two fixture principals with disjoint records — that
       # disjointness is what makes a shared identifier proof of a leak.
       def self.run_all(principals:, tools: nil, arguments: {}, invoke: nil, ledger: nil)
-        subjects = tools || Reeve.registry.map(&:tool_class)
-        results = GLOBAL.map { |check| check.new(ledger: ledger).call }
-
-        subjects.each do |tool|
-          results.concat(
-            for_tool(tool, principals: principals, arguments: arguments, invoke: invoke,
-                           ledger: ledger).map(&:call)
-          )
+        reports = ALL.map do |check|
+          run(check, principals: principals, tools: tools, arguments: arguments,
+                     invoke: invoke, ledger: ledger)
         end
 
-        Report.new(results)
+        Report.new(reports.flat_map(&:results))
       end
 
-      # Every per-tool check, instantiated but not run. Exposed because both front-ends
-      # build their per-check test methods from it, and because a host that wants to run
-      # one tool's checks in isolation should not have to know the constructors.
+      # One check, across every tool it applies to. This is what both front-ends build a
+      # test method out of, so that a failing suite names the guarantee that broke rather
+      # than reporting "compliance" as one undifferentiated red.
+      def self.run(check, principals:, tools: nil, arguments: {}, invoke: nil, ledger: nil)
+        return Report.new([check.new(ledger: ledger).call]) if GLOBAL.include?(check)
+
+        subjects = tools || Reeve.registry.map(&:tool_class)
+        Report.new(
+          subjects.map do |tool|
+            build(check, tool: tool, principals: principals, arguments: arguments,
+                         invoke: invoke, ledger: ledger).call
+          end
+        )
+      end
+
+      # Every per-tool check for one tool, instantiated but not run.
       def self.for_tool(tool, principals:, arguments: {}, invoke: nil, ledger: nil)
-        principal = Array(principals).first
+        (ALL - GLOBAL).map do |check|
+          build(check, tool: tool, principals: principals, arguments: arguments,
+                       invoke: invoke, ledger: ledger)
+        end
+      end
+
+      # The one place that knows what each check's constructor wants. Front-ends and hosts
+      # ask for a check by class and get a configured one back.
+      def self.build(check, tool:, principals:, arguments: {}, invoke: nil, ledger: nil)
         common = { tool: tool, arguments: arguments, invoke: invoke, ledger: ledger }
 
-        [
-          GuardDeclared.new(tool: tool, ledger: ledger),
-          CrossPrincipalLeak.new(principals: Array(principals), **common),
-          AuditCoverage.new(principal: principal, **common),
-          RulePresent.new(principal: principal, **common),
-          RedactionHolds.new(principal: principal, **common),
-          PrincipalRequired.new(**common)
-        ]
+        case check.check_name
+        when "GuardDeclared"      then GuardDeclared.new(tool: tool, ledger: ledger)
+        when "ContractVersion"    then ContractVersion.new(ledger: ledger)
+        when "PrincipalRequired"  then PrincipalRequired.new(**common)
+        when "CrossPrincipalLeak" then CrossPrincipalLeak.new(principals: Array(principals),
+                                                              **common)
+        else check.new(principal: Array(principals).first, **common)
+        end
       end
     end
   end
