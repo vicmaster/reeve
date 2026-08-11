@@ -19,6 +19,34 @@ module Reeve
   # process with no ActiveRecord (SC-008), so nothing here is loaded by the core — a host
   # (or the generated initializer) requires "reeve/audit" when it wants the table-backed
   # recorder.
+  #
+  #   require "reeve/audit"
+  #
+  #   Reeve::Audit::Query.for_principal(user)
+  #                      .for_agent("claude-desktop")
+  #                      .between(1.week.ago, Time.current)
+  #                      .pluck(:tool_name, :record_type, :record_ids, :outcome, :rule)
+  #
+  # == What this module guarantees
+  #
+  # * exactly one row per invocation, allowed or denied — `invocation_id` is unique, and
+  #   a replayed invocation is a no-op insert rather than a second row;
+  # * `rule` is never null: every row explains itself;
+  # * arguments are post-redaction, and no unredacted copy is written anywhere;
+  # * `record_count` stays true even when `record_ids` was capped, and `truncated` says so;
+  # * `occurred_at` is invocation time, not write time;
+  # * no public method updates or deletes an entry.
+  #
+  # == What it does not
+  #
+  # * It does not stop a database superuser, a migration, or raw SQL from rewriting the
+  #   table. Immutability is enforced at the library level; the generated migration
+  #   documents the `GRANT INSERT, SELECT` that enforces the rest where it can actually be
+  #   enforced, and the gem makes no stronger claim than that.
+  # * No retention, rotation or archival in v1 — the table is host-owned and the host's
+  #   existing policies apply.
+  # * No cryptographic chaining or tamper-evidence in v1. If that lands it arrives as a
+  #   nullable column, which the audit-entry contract's versioning already permits.
   module Audit
     # The version of the audit-entry shape, as documented in
     # specs/001-guardrails-core/contracts/audit-entry.md (FR-015). Adding a nullable

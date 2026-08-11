@@ -75,6 +75,17 @@ RSpec.describe "the audit entries migration" do
     end
   end
 
+  # T043. The grant is the only thing that makes the ledger immutable against raw SQL,
+  # and the migration is where a host will actually read it. Losing that paragraph in a
+  # future edit would quietly downgrade the guarantee, so it is pinned here.
+  it "tells the host how to make the table append-only in the database" do
+    template = File.read(Ledger::TEMPLATE)
+
+    expect(template).to match(/GRANT INSERT, SELECT/)
+    expect(template).to match(/retention|archival/i)
+    expect(template).to match(/tamper-evidence|chaining/i)
+  end
+
   it "rolls back cleanly and can be re-applied" do
     Ledger.migrate_down!
     expect(Ledger.table_exists?).to be(false)
