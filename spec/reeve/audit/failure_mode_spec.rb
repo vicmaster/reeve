@@ -55,14 +55,35 @@ RSpec.describe "a ledger that cannot be written" do
   end
 
   describe "when something is already on its way out" do
-    it "does not mask the tool's own exception with an audit error" do
-      expect { invoke { raise "kaboom" } }.to raise_error(RuntimeError, "kaboom")
+    # These two originally asserted the opposite — that an exception already in flight
+    # kept its place and the audit failure was swallowed. A code review showed what that
+    # cost: denials and tool errors are most of what a ledger is consulted about, so a
+    # broken ledger stayed invisible for exactly those calls, in the default mode, with
+    # nothing raised. Constitution II is unconditional, so the audit error now wins and
+    # carries the original.
+    it "fails with an audit error that carries the tool's own exception" do
+      expect { invoke { raise "kaboom" } }.to raise_error(Reeve::AuditWriteError) { |error|
+        expect(error.during).to be_a(RuntimeError)
+        expect(error.during.message).to eq("kaboom")
+        expect(error.message).to include("kaboom")
+      }
     end
 
-    it "does not turn a denial into an audit error" do
+    it "fails with an audit error that carries the denial" do
+      denial = Reeve::Decision.deny(rule: "InvoicePolicy#index?")
+
+      expect { invoke(decision: denial) }.to raise_error(Reeve::AuditWriteError) { |error|
+        expect(error.during).to be_a(Reeve::DeniedError)
+        expect(error.during.rule).to eq("InvoicePolicy#index?")
+      }
+    end
+
+    it "still lets both through untouched in the opt-in :warn mode" do
+      Reeve.configure { |c| c.audit_failure_mode = :warn }
       denial = Reeve::Decision.deny(rule: "InvoicePolicy#index?")
 
       expect { invoke(decision: denial) }.to raise_error(Reeve::DeniedError)
+      expect { invoke { raise "kaboom" } }.to raise_error(RuntimeError, "kaboom")
     end
   end
 end

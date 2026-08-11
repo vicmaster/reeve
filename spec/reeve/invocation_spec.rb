@@ -292,6 +292,30 @@ RSpec.describe Reeve::Invocation do
       )
     end
 
+    # Review finding: this path recorded record_count: 0 for a call that returned
+    # everything, which is not an incomplete entry but a false one — and it is the one
+    # path where the result was never narrowed at all.
+    it "records what the unscoped call actually returned" do
+      records = [double("Row", id: 1), double("Row", id: 2), double("Row", id: 3)]
+
+      invoke(registry: FakeRegistry.new) { records }
+
+      expect(recorder.entry).to include(
+        outcome: "allow", guard: "none", record_count: 3, record_ids: %w[1 2 3]
+      )
+    end
+
+    it "truncates those identifiers like any other entry" do
+      Reeve.configure { |c| c.max_recorded_ids = 2 }
+      records = (1..5).map { |i| double("Row", id: i) }
+
+      invoke(registry: FakeRegistry.new) { records }
+
+      expect(recorder.entry[:record_ids].size).to eq(2)
+      expect(recorder.entry[:record_count]).to eq(5)
+      expect(recorder.entry[:truncated]).to be(true)
+    end
+
     it "warns through the configured logger" do
       logger = CapturingLogger.new
       Reeve.configure { |c| c.logger = logger }
@@ -339,10 +363,22 @@ RSpec.describe Reeve::Invocation do
       expect(logger.warnings.join).to match(/ledger unavailable|could not record/)
     end
 
-    # Masking the tool's own exception would hide the cause the developer needs.
-    it "lets the tool's error win when both fail, and warns about the lost entry" do
+    # A call that cannot be recorded is a failed call, in flight or not (Constitution II).
+    # The tool's own error is carried on the audit error rather than traded against it.
+    it "fails with an audit error carrying the tool's error when both fail" do
+      expect { invoke(recorder: failing) { raise ArgumentError, "bad query" } }
+        .to raise_error(Reeve::AuditWriteError) { |error|
+          expect(error.during).to be_a(ArgumentError)
+          expect(error.message).to include("bad query")
+        }
+    end
+
+    it "lets the tool's error through untouched in the opt-in :warn mode" do
       logger = CapturingLogger.new
-      Reeve.configure { |c| c.logger = logger }
+      Reeve.configure do |c|
+        c.audit_failure_mode = :warn
+        c.logger = logger
+      end
 
       expect { invoke(recorder: failing) { raise ArgumentError, "bad query" } }
         .to raise_error(ArgumentError, "bad query")
@@ -353,8 +389,18 @@ RSpec.describe Reeve::Invocation do
   describe "collaborator defaults" do
     # A kernel with no modules wired in must deny, not pass through.
     it "denies every call when nothing is injected" do
-      expect { described_class.call(context) { %w[records] } }
+      expect { described_class.call(context, recorder: recorder) { %w[records] } }
         .to raise_error(Reeve::DeniedError) { |e| expect(e.rule).to eq("no_guard_declared") }
+    end
+
+    # With no ledger at all the denial cannot be recorded, and an unrecordable call fails
+    # as an audit failure — carrying the denial, so the developer sees both.
+    it "reports the missing ledger, not just the denial, when neither is configured" do
+      expect { described_class.call(context) { %w[records] } }
+        .to raise_error(Reeve::AuditWriteError) { |error|
+          expect(error.during).to be_a(Reeve::DeniedError)
+          expect(error.message).to match(/no audit recorder is configured/)
+        }
     end
 
     it "fails closed on the ledger too, since a call it cannot record is a call it cannot make" do

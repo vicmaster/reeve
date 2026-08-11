@@ -29,6 +29,37 @@ module Reeve
       new(decision: Decision.deny(rule: rule, detail: detail), records: nil)
     end
 
+    # For a result nothing narrowed — the `:allow_with_warning` path. It still has to say
+    # what came back: an entry reading `record_count: 0` for a call that returned the whole
+    # table is not merely incomplete but false, and this is the one path on which
+    # everything came back.
+    def self.unscoped(records:, rule:)
+      identifiers = identifiers_in(records)
+      limit = Reeve.config.max_recorded_ids
+
+      new(
+        decision: Decision.allow(rule: rule),
+        records: records,
+        record_type: type_of(records),
+        record_ids: identifiers.first(limit),
+        record_count: identifiers.size,
+        truncated: identifiers.size > limit
+      )
+    end
+
+    def self.identifiers_in(records)
+      Array(records).filter_map { |record| record.id.to_s if record.respond_to?(:id) }
+    rescue StandardError
+      []
+    end
+
+    def self.type_of(records)
+      first = Array(records).first
+      first.respond_to?(:id) ? first.class.name : nil
+    rescue StandardError
+      nil
+    end
+
     def initialize(decision:, records: nil, record_type: nil, record_ids: nil,
                    record_count: nil, truncated: false, derived: false)
       @decision    = decision

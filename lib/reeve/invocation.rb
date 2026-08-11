@@ -165,7 +165,7 @@ module Reeve
       warn_about_unguarded_tool
       @guard_label = "none"
       result = execute(&tool)
-      @scope_result = ScopeResult.allow(records: result, rule: Decision::UNGUARDED_TOOL)
+      @scope_result = ScopeResult.unscoped(records: result, rule: Decision::UNGUARDED_TOOL)
       Decision.allow(rule: Decision::UNGUARDED_TOOL, detail: unguarded_detail)
     end
 
@@ -223,14 +223,25 @@ module Reeve
       )
     end
 
+    # Constitution II: a call that cannot be recorded is a failed call, and that holds
+    # whether or not the call was failing already.
+    #
+    # This used to return quietly whenever another exception was in flight, on the
+    # reasoning that the developer needs the original error more than the audit error.
+    # The reasoning was wrong: denials and tool errors are *most* of what a ledger is
+    # consulted about, so the effect was that a broken ledger stayed invisible for exactly
+    # the invocations a compliance review looks for, in the default mode, with no
+    # exception raised. The in-flight error is now carried on the audit error instead of
+    # being traded against it.
     def handle_write_failure(error)
-      # Never mask an exception already on its way out — the developer needs that one.
-      if config.audit_failure_mode == :warn || @in_flight_error
+      if config.audit_failure_mode == :warn
         log("reeve could not record invocation #{context.invocation_id}: #{error.message}")
         return
       end
 
-      raise AuditWriteError.new(invocation_id: context.invocation_id, cause: error)
+      raise AuditWriteError.new(
+        invocation_id: context.invocation_id, cause: error, during: @in_flight_error
+      )
     end
 
     def warn_about_unguarded_tool

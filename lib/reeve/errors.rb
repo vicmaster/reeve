@@ -65,12 +65,23 @@ module Reeve
   class AuditWriteError < Error
     attr_reader :invocation_id, :original_error, :rule
 
-    def initialize(invocation_id:, cause: nil)
+    # `during` is whatever the invocation was already raising when the ledger write
+    # failed — usually a DeniedError, sometimes the tool's own exception. It is carried
+    # rather than discarded: the audit failure must win, because a call that cannot be
+    # recorded is a failed call, but the developer still needs to see what the call was
+    # doing at the time.
+    attr_reader :during
+
+    def initialize(invocation_id:, cause: nil, during: nil)
       @invocation_id  = invocation_id&.to_s
       @original_error = cause
+      @during         = during
       @rule           = Decision::AUDIT_WRITE_FAILED
       message = "reeve could not record invocation #{@invocation_id}"
       message = "#{message}: #{cause.message}" if cause
+      if during
+        message = "#{message} (while the invocation was already failing with #{during.class}: #{during.message})"
+      end
       super(message)
     end
   end

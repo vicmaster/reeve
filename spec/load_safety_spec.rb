@@ -32,8 +32,14 @@ RSpec.describe "loading reeve" do
   end
 
   it "exposes the kernel and denies a call without a principal, without any host library" do
+    # A recorder is supplied because an unrecordable call fails as an audit failure; the
+    # point here is the denial, not the ledger.
     script = <<~RUBY
       require "reeve"
+      recorder = Object.new
+      def recorder.record(attributes) = attributes
+      Reeve.configure { |c| c.audit_recorder = recorder }
+
       context = Reeve::Context.new(tool_name: "anything")
       begin
         Reeve::Invocation.call(context) { [] }
