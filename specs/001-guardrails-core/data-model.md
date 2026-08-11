@@ -1,4 +1,4 @@
-# Data Model: mcp-guardrails v1
+# Data Model: reeve v1
 
 **Date**: 2026-08-11 | **Feature**: 001-guardrails-core
 
@@ -39,7 +39,7 @@ match on them):
 - `no_principal` — resolver returned nil or raised (FR-001)
 - `policy_error` — policy raised (fail closed, FR-004)
 - `unknown_record_type` — returned type has no policy (edge case)
-- `undeclared_derived_result` — derived value with no `derives_from` (R4)
+- `unscoped_derived_result` — non-record return without `scoped(...)` (R4)
 - `out_of_scope_record` — single-record fetch outside scope (FR-006)
 - `audit_write_failed` — ledger write failed in default mode (FR-012)
 
@@ -56,7 +56,6 @@ What `guard_with` records per tool, held in the registry.
 | `tool_name` | String | |
 | `policy` | Class or object | Resolved through a policy adapter. |
 | `action` | Symbol | Defaults to `:index`; overridable per tool. |
-| `derives_from` | Symbol, nil | Declares the scoped source of a derived result (R4). |
 | `redacted_arguments` | Array<Symbol> | Merged with the global redaction list. |
 
 ### Registry
@@ -67,7 +66,7 @@ time via the DSL; the registry is enumerable and resettable in tests.
 
 ## Persisted entity
 
-### AuditEntry — `mcp_guardrails_audit_entries`
+### AuditEntry — `reeve_audit_entries`
 
 Append-only. One row per guarded invocation, allowed or denied (FR-008).
 
@@ -88,7 +87,7 @@ Append-only. One row per guarded invocation, allowed or denied (FR-008).
 | `record_ids` | json | no | Array; `[]` for denials and empty results. |
 | `record_count` | integer | no | True total, even when `record_ids` is truncated. |
 | `truncated` | boolean | no | Default false; true when `record_count > max_recorded_ids` (FR-014). |
-| `derived` | boolean | no | Default false; true when the result was an aggregate (R4). |
+| `derived` | boolean | no | Default false; true when the result was a value derived via `scoped(...)` rather than records (R4). |
 | `guard` | string | no | `"policy"`, or `"none"` when running in `:allow_with_warning` mode (R9). |
 | `duration_ms` | integer | yes | Envelope wall time. |
 | `metadata` | json | yes | Host-supplied extras; never populated by the core. |

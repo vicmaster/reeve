@@ -3,19 +3,26 @@
 **Stability**: public. The whole tool-side surface is three macros.
 
 ```ruby
-class InvoiceSearchTool < FastMcp::Tool   # or any class including MCP::Guardrails::Guard
-  include MCP::Guardrails::Guard          # implicit in the fast-mcp adapter
+class InvoiceSearchTool < FastMcp::Tool   # or any class including Reeve::Guard
+  include Reeve::Guard          # implicit in the fast-mcp adapter
 
   guard_with InvoicePolicy                # required — absence means deny (FR-002, FR-004)
   guard_with InvoicePolicy, action: :read # optional action override
 
   redact :customer_ssn                    # per-tool redaction, merged with global (FR-011)
 
-  derives_from :invoices                  # only for aggregate returns (R4)
-
   def call(query:)
     Invoice.where("number LIKE ?", "%#{query}%")   # returns a relation — scoped automatically
   end
+end
+```
+
+For anything that is not a record — a count, a sum, a summary string — ask for the scoped
+relation instead of returning one:
+
+```ruby
+def call(**)
+  scoped(Invoice).where(overdue: true).count      # safe by construction
 end
 ```
 
@@ -37,15 +44,25 @@ end
   `config.redact_arguments`. Recursive into nested hashes. Argument names always survive;
   only values are replaced.
 
-## `derives_from(source)`
+## `scoped(model_or_relation)` — instance method, not a macro
 
-- Declares that this tool returns a computed value (count, sum, string, hash) derived from
-  the named scoped source rather than records.
-- Required for any non-record return from a guarded tool. Without it, the envelope denies
-  with `undeclared_derived_result` (R4) — a guarded tool cannot quietly return an
-  unscoped aggregate.
-- The resulting ledger entry has `derived: true`, `record_ids: []`, and `record_count`
-  set to the size of the scoped source when it is countable.
+- Returns the relation narrowed to what the invoking principal may see, via the tool's
+  declared policy. Available inside `call`.
+- **This is how a guarded tool returns anything that is not a record.** Counts, sums,
+  grouped summaries, and rendered strings are all safe when computed from `scoped(...)`,
+  because the tool never held unscoped data.
+- The envelope tracks whether `scoped` was used during the invocation. A guarded tool that
+  returns a non-record value **without** having called `scoped` is denied with
+  `unscoped_derived_result` — the tool had unscoped data in hand and we cannot prove what
+  it did with it.
+- `scoped` on a model with no policy for that type denies with `unknown_record_type`.
+- Resulting ledger entry: `derived: true`, `record_ids: []`, and `record_count` set to the
+  size of the scoped source when countable.
+
+*Design note*: this replaces an earlier `derives_from :invoices` declaration. Asking the
+developer for the scoped relation is strictly better than asking them to promise they used
+one — it is enforceable by construction, it removes a macro from the public surface, and it
+guides toward the safe path instead of documenting it.
 
 ## Return-value handling
 
@@ -55,11 +72,11 @@ end
 | Array of records | Each re-checked against the scope; out-of-scope entries removed |
 | A single record | Denied with `out_of_scope_record` if not in scope — never returned, never differentiated from "not found" (FR-006) |
 | Mixed record types | Each type scoped by its own policy; an unpoliced type denies the whole call |
-| Anything else | Requires `derives_from`; otherwise denied |
+| Anything else (count, sum, string, hash) | Allowed only if `scoped(...)` was used during the call; otherwise denied with `unscoped_derived_result` |
 | `nil` / empty | Allowed, recorded with `record_count: 0` — distinct from a denial |
 
 ## Errors
 
-`MCP::Guardrails::DeniedError` carries `#tool_name`, `#principal_id`, `#rule`, and
+`Reeve::DeniedError` carries `#tool_name`, `#principal_id`, `#rule`, and
 `#detail`. Its message names all four (FR-006, Constitution VI) and never reveals whether
 an out-of-scope record exists.

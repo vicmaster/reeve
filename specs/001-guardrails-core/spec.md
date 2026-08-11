@@ -1,15 +1,15 @@
-# Feature Specification: mcp-guardrails v1 — Authorization, Audit, Testing Kit
+# Feature Specification: reeve v1 — Authorization, Audit, Testing Kit
 
 **Feature Branch**: `001-guardrails-core`
 **Created**: 2026-08-11
 **Status**: Draft
-**Input**: User description: "mcp-guardrails v1: per-record authorization, append-only audit ledger, and testing kit for Rails MCP tools"
+**Input**: User description: "reeve v1: per-record authorization, append-only audit ledger, and testing kit for Rails MCP tools"
 
 ## Overview
 
 A Rails application that exposes MCP tools to AI agents can today authenticate the
 connection but cannot answer two questions: *what may this agent see, for the specific
-human it is acting for?* and *what did it actually see?* mcp-guardrails is a library the
+human it is acting for?* and *what did it actually see?* reeve is a library the
 application adds to answer both, plus a testing kit that turns those answers into CI
 assertions.
 

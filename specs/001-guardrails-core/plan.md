@@ -1,11 +1,11 @@
-# Implementation Plan: mcp-guardrails v1 — Authorization, Audit, Testing Kit
+# Implementation Plan: reeve v1 — Authorization, Audit, Testing Kit
 
 **Branch**: `001-guardrails-core` | **Date**: 2026-08-11 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/001-guardrails-core/spec.md`
 
 ## Summary
 
-Ship one Ruby gem, `mcp-guardrails`, that wraps MCP tool execution in a single envelope
+Ship one Ruby gem, `reeve`, that wraps MCP tool execution in a single envelope
 enforcing three guarantees: the call runs as an explicit principal and returns only records
 that principal may see (deny by default), every call — allowed or denied — appends one
 immutable ledger row, and both properties are assertable from the host application's own
@@ -15,16 +15,16 @@ everyone else.
 
 ## Technical Context
 
-**Language/Version**: Ruby 3.2+ (gem targets maintained Rubies; CI matrix 3.2 / 3.3 / 3.4)
+**Language/Version**: Ruby 3.0+ (CI matrix 3.0 / 3.2 / 3.4 — floor, midpoint, current)
 **Primary Dependencies**: none required at runtime. Optional/soft: ActiveRecord + ActiveSupport
-(≥ 7.1, for the ledger and generators), Pundit (policy bridge), fast-mcp (adapter),
+(≥ 7.0, for the ledger and generators), Pundit (policy bridge), fast-mcp (adapter),
 RSpec **and** Minitest (testing-kit front-ends). All detected at load, none in
 `spec.add_dependency`. The kit's checks are plain Ruby and load neither framework.
-**Storage**: host-owned ActiveRecord table `mcp_guardrails_audit_entries`, created by the
+**Storage**: host-owned ActiveRecord table `reeve_audit_entries`, created by the
 install generator; append-only. JSON/JSONB columns for arguments and record identifiers.
 **Testing**: RSpec + a dummy Rails app under `spec/dummy` with SQLite for the AR-backed and
 generator specs; core unit specs run without Rails.
-**Target Platform**: Rails 7.1+ applications exposing MCP tools; also usable as a plain
+**Target Platform**: Rails 7.0+ applications exposing MCP tools; also usable as a plain
 Ruby library with no Rails present.
 **Project Type**: single library (rubygem)
 **Performance Goals**: guardrails overhead ≤ 5 ms per invocation excluding the policy's own
@@ -42,19 +42,20 @@ comparable test volume.
 | Principle | Gate | Status |
 |-----------|------|--------|
 | I. Deny by Default | Exactly one execution envelope; every error path returns a Deny with a named rule; no tool path bypasses it | ✅ PASS — R1 gives a single funnel; `Decision` requires a rule string |
-| II. Every Call Leaves a Trace | One ledger row per invocation, allow and deny; no update/delete API; write failure fails the call by default | ✅ PASS — R5; async writes explicitly excluded from v1 |
+| II. Every Call Leaves a Trace | One ledger row per invocation, allow and deny; survives a rollback of the tool's own work; no update/delete API; write failure fails the call by default | ✅ PASS — R5 (corrected): own transaction in `ensure`; async writes excluded from v1 |
 | III. Provable by Test | Every authorization/audit behavior expressible via the testing kit; test-first in this repo | ✅ PASS — R8; testing kit is a deliverable module, not an afterthought |
 | IV. Extension Layer | No required dependency on any MCP server or policy library; adapters conditionally loaded, in-gem | ✅ PASS — empty runtime dependency list; adapters gated on `defined?` |
 | V. Clean-Room Provenance | No code, names, schemas, or docs from any proprietary system | ✅ PASS — table/column/class names below are original; policy-object and ledger patterns are public prior art |
-| VI. Boring DX | Three-step adoption; small additive API; errors name principal/tool/rule; runnable examples | ✅ PASS — see quickstart.md; public surface is 1 config block, 3 tool macros, 3 matchers |
+| VI. Boring DX | Three-step adoption; small additive API; errors name principal/tool/rule; runnable examples | ✅ PASS — see quickstart.md; public surface is 1 config block, 2 tool macros + 1 helper, 2 matchers |
 
 **Post-design re-check (after data-model.md, contracts/, quickstart.md)**: ✅ PASS — no new
 violations introduced. Complexity Tracking is empty.
 
-One item to watch, not a violation: R4's three result shapes are the largest single source
-of accidental complexity in this design. If the Phase 1 design panel finds a way to collapse
-"record collection" and "derived value" into one declarative mechanism, take it —
-Principle VI favors the smaller surface.
+**Watch item resolved (2026-08-11)**: this section previously flagged R4's three result
+shapes as the design's largest source of accidental complexity and deferred a fix to the
+Phase 1 design panel. Resolved earlier instead: the `derives_from` macro is gone, replaced
+by a `scoped(Model)` helper that hands the tool the policy-scoped relation. Safety is now by
+construction rather than by declaration, and the public surface shrank by one macro.
 
 ## Project Structure
 
@@ -69,7 +70,7 @@ specs/001-guardrails-core/
 ├── quickstart.md        # The three-step adoption path, end to end
 ├── contracts/
 │   ├── configuration.md     # Public config surface
-│   ├── tool-dsl.md          # guard_with / derives_from / redact
+│   ├── tool-dsl.md          # guard_with / redact / scoped
 │   ├── policy-adapter.md    # The two-method protocol
 │   ├── audit-entry.md       # Versioned ledger entry contract
 │   └── testing-kit.md       # Matchers + shared compliance suite
@@ -81,52 +82,51 @@ specs/001-guardrails-core/
 
 ```text
 lib/
-├── mcp-guardrails.rb                     # gem-name entry point, requires the below
-└── mcp/
-    └── guardrails/
-        ├── version.rb
-        ├── configuration.rb              # config object + defaults
-        ├── errors.rb                     # DeniedError and friends
-        ├── invocation.rb                 # the envelope (R1) — the one funnel
-        ├── context.rb                    # per-invocation context; principal carrier
-        ├── decision.rb                   # allow/deny + rule (never nil)
-        ├── authorization/
-        │   ├── guard.rb                  # the tool-side DSL: guard_with, derives_from, redact
-        │   ├── registry.rb               # registered guarded tools (feeds the compliance suite)
-        │   ├── scoper.rb                 # R4 result-shape dispatch
-        │   └── adapters/
-        │       ├── plain.rb              # any object answering authorize/scope
-        │       └── pundit.rb             # loaded only if Pundit is defined
-        ├── audit/
-        │   ├── entry.rb                  # AR model, readonly-enforcing
-        │   ├── recorder.rb               # builds + writes exactly one entry
-        │   ├── redactor.rb               # R6
-        │   └── query.rb                  # by principal / agent / tool / outcome / time
-        ├── rspec.rb                      # opt-in require: RSpec front-end
-        ├── minitest.rb                   # opt-in require: Minitest front-end
-        ├── testing/
-        │   ├── checks/                   # framework-neutral; ALL the logic lives here
-        │   │   ├── cross_principal_leak.rb
-        │   │   ├── audit_coverage.rb
-        │   │   ├── guard_declared.rb
-        │   │   ├── rule_present.rb
-        │   │   ├── redaction_holds.rb
-        │   │   ├── principal_required.rb
-        │   │   ├── contract_version.rb
-        │   │   └── result.rb             # Result + Report + run_all
-        │   ├── matchers/                 # thin RSpec adapters over the checks
-        │   │   ├── deny_access_for.rb
-        │   │   └── audit_every_call.rb
-        │   ├── compliance_suite.rb       # RSpec shared example group
-        │   ├── assertions.rb             # thin Minitest adapters over the checks
-        │   └── compliance_assertions.rb  # Minitest compliance module
-        ├── fast_mcp.rb                   # opt-in require for the adapter
-        └── integrations/
-            └── fast_mcp/
-                ├── tool_extension.rb     # mixes the DSL into FastMcp::Tool subclasses
-                └── context_builder.rb    # server metadata -> Guardrails::Context
+├── reeve.rb                         # entry point, requires the kernel only
+└── reeve/
+    ├── version.rb
+    ├── configuration.rb             # config object + defaults
+    ├── errors.rb                    # DeniedError and friends
+    ├── invocation.rb                # the envelope (R1) — the one funnel
+    ├── context.rb                   # per-invocation context; principal carrier
+    ├── decision.rb                  # allow/deny + rule (never nil)
+    ├── authorization/
+    │   ├── guard.rb                 # the tool-side DSL: guard_with, redact, scoped
+    │   ├── registry.rb              # registered guarded tools (feeds the compliance suite)
+    │   ├── scoper.rb                # relation/record scoping + scoped() tracking (R4)
+    │   └── adapters/
+    │       ├── plain.rb             # any object answering authorize/scope
+    │       └── pundit.rb            # loaded only if Pundit is defined
+    ├── audit/
+    │   ├── entry.rb                 # AR model, readonly-enforcing
+    │   ├── recorder.rb              # one write, own transaction, in ensure (R5)
+    │   ├── redactor.rb              # R6
+    │   └── query.rb                 # by principal / agent / tool / outcome / time
+    ├── rspec.rb                     # opt-in require: RSpec front-end
+    ├── minitest.rb                  # opt-in require: Minitest front-end
+    ├── testing/
+    │   ├── checks/                  # framework-neutral; ALL the logic lives here
+    │   │   ├── cross_principal_leak.rb
+    │   │   ├── audit_coverage.rb
+    │   │   ├── guard_declared.rb
+    │   │   ├── rule_present.rb
+    │   │   ├── redaction_holds.rb
+    │   │   ├── principal_required.rb
+    │   │   ├── contract_version.rb
+    │   │   └── result.rb            # Result + Report + run_all
+    │   ├── matchers/                # thin RSpec adapters over the checks
+    │   │   ├── deny_access_for.rb
+    │   │   └── audit_every_call.rb
+    │   ├── compliance_suite.rb      # RSpec shared example group
+    │   ├── assertions.rb            # thin Minitest adapters over the checks
+    │   └── compliance_assertions.rb # Minitest compliance module
+    ├── fast_mcp.rb                  # opt-in require for the adapter
+    └── integrations/
+        └── fast_mcp/
+            ├── tool_extension.rb    # mixes the DSL into FastMcp::Tool subclasses
+            └── context_builder.rb   # server metadata -> Reeve::Context
 
-lib/generators/mcp_guardrails/
+lib/generators/reeve/
 ├── install/
 │   ├── install_generator.rb
 │   └── templates/
@@ -142,13 +142,13 @@ spec/
 └── dummy/                # minimal Rails app: two principals, shared records, 3 tools
 ```
 
-**Structure Decision**: Single-gem library layout. `lib/mcp/guardrails/` mirrors the three
+**Structure Decision**: Single-gem library layout. `lib/reeve/` mirrors the three
 spec modules one-to-one (`authorization/`, `audit/`, `testing/`), with `invocation.rb`,
 `context.rb`, `decision.rb`, `configuration.rb`, and `errors.rb` as the shared kernel all
 three depend on. That kernel is deliberately small and is built **before** the three modules
 fan out — it is the merge-conflict surface for the Phase 2 parallel batch, so it must be
 frozen first. Adapters and the testing-kit front-ends sit behind explicit `require` paths
-(`require "mcp/guardrails/fast_mcp"`, `"mcp/guardrails/rspec"`, `"mcp/guardrails/minitest"`)
+(`require "reeve/fast_mcp"`, `"reeve/rspec"`, `"reeve/minitest"`)
 so the default `require` pulls in nothing optional (Constitution IV). Within the kit, the
 `checks/` layer holds all logic and loads no test framework; the RSpec and Minitest layers
 are adapters over it, which is what keeps a guarantee from being provable in one framework

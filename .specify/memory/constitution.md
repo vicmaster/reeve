@@ -20,11 +20,21 @@ Sync Impact Report
     testing/documentation; audit + authorization tasks are feature-level
   - ✅ .claude/commands/speckit.*.md — no outdated agent-specific references
 - Deferred TODOs: none
+
+Amendment 1.0.1 (2026-08-11) — PATCH, naming and platform floor only:
+- Project renamed `mcp-guardrails` → `reeve`. Rationale: "MCP" and "guardrails" are
+  saturated terms, and `MCP::Guardrails` would have reopened the official `mcp` gem's
+  top-level namespace. `reeve` — an official acting with delegated authority on behalf
+  of another — names the principal/agent relationship the gem governs.
+- Platform floor lowered from Ruby 3.2 / Rails 7.1 to Ruby 3.0 / Rails 7.0, to reach more
+  of the Rails install base. README states that maintained Rails is assumed for anything
+  security-relevant.
+- No principle added, removed, or redefined; governance unchanged.
 -->
 
-# mcp-guardrails Constitution
+# reeve Constitution
 
-mcp-guardrails is a Ruby gem that makes it safe for a Rails application to expose MCP
+reeve is a Ruby gem that makes it safe for a Rails application to expose MCP
 tools to AI agents: per-record authorization, an append-only audit trail, and a testing
 kit that proves both hold. Authentication says who is at the door; this gem decides what
 they may touch and remembers what they touched.
@@ -72,7 +82,7 @@ product, not an accessory to it.
 The gem rides the existing Ruby MCP stack (official `mcp` SDK, fast-mcp, ActionMCP) and
 competes with none of it. The core MUST remain independent of any single server library;
 integrations live inside this gem as conditionally-loaded adapters
-(`require "mcp/guardrails/fast_mcp"`), never as hard dependencies and never as separate
+(`require "reeve/fast_mcp"`), never as hard dependencies and never as separate
 gems until an adapter grows genuine independent surface. Any proposed scope MUST be
 positioning-checked against existing gems before it is built; duplicating a healthy
 upstream feature is out of scope by default.
@@ -94,19 +104,19 @@ provenance question would end that permanently.
 
 ### VI. Boring DX
 
-Adoption is three steps and no surprises: `bundle add mcp-guardrails` →
-`rails g mcp_guardrails:install` (initializer plus audit migration) → `guard_with
+Adoption is three steps and no surprises: `bundle add reeve` →
+`rails g reeve:install` (initializer plus audit migration) → `guard_with
 SomePolicy` in a tool. Public API surface stays small and additive; new configuration
 requires a demonstrated need, not an anticipated one. Errors name the principal, the
 tool, and the rule that denied the call. Every public entry point ships with a runnable
 example in the README or gem documentation.
 
-*Rationale*: "Devise made Rails authentication boring; mcp-guardrails makes agent access
+*Rationale*: "Devise made Rails authentication boring; reeve makes agent access
 boring." Boring is the feature — a guardrail that is fiddly to adopt does not get adopted.
 
 ## Additional Constraints (Technology & Compatibility)
 
-- **Language/runtime**: Ruby gem targeting maintained Ruby versions and Rails 7.1+;
+- **Language/runtime**: Ruby gem targeting Ruby 3.0+ and Rails 7.0+;
   Rails-facing code (generators, migrations, ActiveRecord integration) MUST be optional
   at load time so the core can be exercised without a full Rails boot.
 - **Dependencies**: The core has no required dependency on any MCP server gem, on Pundit,
@@ -157,4 +167,4 @@ III, and V explicitly; a violation of any NON-NEGOTIABLE principle blocks the me
 Complexity that appears to violate Principle IV or VI must be justified in the plan's
 Complexity Tracking section or removed.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-11 | **Last Amended**: 2026-08-11
+**Version**: 1.0.1 | **Ratified**: 2026-08-11 | **Last Amended**: 2026-08-11

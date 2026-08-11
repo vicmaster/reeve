@@ -8,8 +8,8 @@ one framework only (FR-026).
 
 ```text
 testing/checks/*.rb        ← all the logic; plain Ruby; no test framework loaded
-testing/matchers/*.rb      ← RSpec front-end        (require "mcp/guardrails/rspec")
-testing/assertions.rb      ← Minitest front-end     (require "mcp/guardrails/minitest")
+testing/matchers/*.rb      ← RSpec front-end        (require "reeve/rspec")
+testing/assertions.rb      ← Minitest front-end     (require "reeve/minitest")
                            ← plain Ruby: call the checks directly
 ```
 
@@ -19,7 +19,7 @@ A check is an object with `#call` returning a `Result`. It loads no test framewo
 raises nothing on failure.
 
 ```ruby
-check = MCP::Guardrails::Checks::CrossPrincipalLeak.new(
+check = Reeve::Checks::CrossPrincipalLeak.new(
   tool: InvoiceSearchTool, principals: [alice, bob], arguments: { query: "AC" }
 )
 result = check.call
@@ -49,23 +49,23 @@ it is callable with no test framework present at all.
 suite** — a rake task, a CI script, a deploy gate, or a boot-time assertion in staging:
 
 ```ruby
-report = MCP::Guardrails::Checks.run_all(principals: [alice, bob])
+report = Reeve::Checks.run_all(principals: [alice, bob])
 abort report.to_s unless report.passed?
 ```
 
 ## Layer 2 — RSpec front-end
 
 ```ruby
-require "mcp/guardrails/rspec"
-RSpec.configure { |c| c.include MCP::Guardrails::Testing::Matchers }
+require "reeve/rspec"
+RSpec.configure { |c| c.include Reeve::Testing::Matchers }
 
 RSpec.describe InvoiceSearchTool do
   it { is_expected.to deny_access_for(stranger).with(query: "AC") }
   it { is_expected.to audit_every_call }
 end
 
-RSpec.describe "MCP guardrails compliance" do
-  it_behaves_like "an mcp-guardrails compliant server"
+RSpec.describe "reeve compliance" do
+  it_behaves_like "a reeve-compliant server"
 end
 ```
 
@@ -74,10 +74,10 @@ end
 Equivalent coverage, same checks, same messages.
 
 ```ruby
-require "mcp/guardrails/minitest"
+require "reeve/minitest"
 
 class InvoiceSearchToolTest < ActiveSupport::TestCase
-  include MCP::Guardrails::Testing::Assertions
+  include Reeve::Testing::Assertions
 
   test "does not leak across principals" do
     assert_denies_access_for InvoiceSearchTool, stranger, query: "AC"
@@ -89,7 +89,7 @@ class InvoiceSearchToolTest < ActiveSupport::TestCase
 end
 
 class ComplianceTest < ActiveSupport::TestCase
-  include MCP::Guardrails::Testing::ComplianceAssertions   # one method per check
+  include Reeve::Testing::ComplianceAssertions   # one method per check
 end
 ```
 
@@ -110,7 +110,7 @@ that principal may not see: Invoice#7, Invoice#8, Invoice#9
 
 ```text
 expected every call to be audited, but InvoiceExportTool produced 0 audit entries
-for 1 invocation — it is invoked outside MCP::Guardrails.invoke
+for 1 invocation — it is invoked outside Reeve.invoke
 ```
 
 ## Constraints

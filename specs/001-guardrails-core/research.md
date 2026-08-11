@@ -1,4 +1,4 @@
-# Research: mcp-guardrails v1
+# Research: reeve v1
 
 **Date**: 2026-08-11 | **Feature**: 001-guardrails-core
 
@@ -69,16 +69,26 @@ site, so `Decision` construction requires it.
 2. **Record or collection of records** — filtered by re-checking each against the scope
    (`scope.where(id: ids)`), and the call denies if anything was filtered out on a
    single-record fetch (FR-006: no existence disclosure).
-3. **Derived value** (count, sum, string, hash) — the tool must declare
-   `derives_from :invoices` so the envelope can verify the computation ran against a
-   scoped relation; undeclared derived returns from a guarded tool are denied.
+3. **Derived value** (count, sum, string, hash) — allowed only if the tool obtained its
+   data through `scoped(Model)`, an instance method the guard mixes in that returns the
+   policy-scoped relation. The envelope tracks whether `scoped` was called; a non-record
+   return without it denies with `unscoped_derived_result`.
 
 Mixed-type collections scope each type by its own policy; an unpoliced type denies the
 whole call (spec edge case).
 
+**Revised 2026-08-11**: case 3 originally required a `derives_from :invoices` macro. Asking
+the developer to *declare* what they derived from is a promise; handing them the scoped
+relation makes it true by construction. The `scoped` form is enforceable rather than
+trusted, removes a macro from the public surface (Constitution VI), and steers toward the
+safe path instead of documenting it. This is the collapse the plan's Constitution Check
+flagged for the design panel — resolved before Phase 1 rather than during it.
+
 **Alternatives rejected**: Scoping only relations and trusting everything else (fails
-FR-003 for the aggregate case). Deep-inspecting arbitrary return values (unbounded and
-still guessable).
+FR-003 for the aggregate case). Banning non-record returns from guarded tools entirely —
+simpler, but "how many overdue invoices do I have?" is a legitimate MCP tool, and refusing
+to guard it just pushes people to leave it unguarded, which is the worse outcome.
+Deep-inspecting arbitrary return values (unbounded and still guessable).
 
 ## R5. Ledger storage and immutability
 
@@ -89,8 +99,21 @@ accepts an entry id for mutation (FR-010); (c) documentation tells hosts to gran
 INSERT+SELECT only on the table for the app role, since a library cannot enforce this
 against raw SQL and should not pretend to.
 
-**Write path**: synchronous and inside the same transaction as the tool body by default,
-so a ledger failure fails the call (FR-012). An explicit
+**Write path (corrected 2026-08-11)**: synchronous, in an `ensure` block, **in its own
+transaction** — deliberately *not* the tool body's transaction.
+
+The original decision put the write inside the tool's transaction so that a ledger failure
+would fail the call. That was wrong in the other direction: a tool body that raises rolls
+back its own audit row, so the invocations most worth recording — the ones that blew up —
+would leave no trace. That contradicts Constitution II outright.
+
+An independent transaction in `ensure` means the trace survives any rollback of the tool's
+own work, on one connection. The honest caveat, documented rather than papered over: there
+is a narrow window where the tool's data commits and the ledger write then fails. In the
+default `:fail` mode the call still raises, so the caller learns — but the data change has
+already landed. Closing that window entirely requires a second connection or two-phase
+commit, which is disproportionate for v1 and is recorded here as the known limit.
+
 `config.audit_failure_mode = :warn` opts into degraded mode. ActiveJob-based async writes
 are deliberately NOT in v1 — they make FR-012 unenforceable.
 
@@ -136,14 +159,14 @@ Front-end surfaces:
   identifiers (FR-016, FR-019).
 - `expect(server).to audit_every_call` — drives every registered tool through the
   envelope and asserts one entry each; failure names the unaudited tool (FR-017).
-- `it_behaves_like "an mcp-guardrails compliant server"` — the shared compliance suite,
+- `it_behaves_like "a reeve-compliant server"` — the shared compliance suite,
   iterating every registered guarded tool (FR-018).
 
 Minitest gets `assert_denies_access_for` / `assert_audits_every_call` and a compliance
 module with one assertion per check.
 
-Front-ends live behind explicit requires (`mcp/guardrails/rspec`,
-`mcp/guardrails/minitest`) so neither framework is a runtime dependency. No MCP client, no
+Front-ends live behind explicit requires (`reeve/rspec`,
+`reeve/minitest`) so neither framework is a runtime dependency. No MCP client, no
 network (FR-020).
 
 **Resolved**: Minitest ships in v1, not deferred.

@@ -1,4 +1,4 @@
-# Specification Quality Checklist: mcp-guardrails v1 — Authorization, Audit, Testing Kit
+# Specification Quality Checklist: reeve v1 — Authorization, Audit, Testing Kit
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-08-11

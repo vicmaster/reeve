@@ -3,9 +3,9 @@
 **Stability**: public. Additive changes only within a major version.
 
 ```ruby
-MCP::Guardrails.configure do |config|
+Reeve.configure do |config|
   # REQUIRED. Returns the human the agent acts for, or nil to deny.
-  # Receives an MCP::Guardrails::Context. Raising is treated as nil (fail closed).
+  # Receives a Reeve::Context. Raising is treated as nil (fail closed).
   config.principal_resolver = ->(context) { User.find_by(id: context.metadata[:user_id]) }
 
   # Pre-existing tools with no guard_with declaration. FR-023.
@@ -31,7 +31,7 @@ MCP::Guardrails.configure do |config|
 
   # Where entries are written. Swappable for a non-ActiveRecord ledger;
   # must respond to #record(entry_attributes) and raise on failure.
-  config.audit_recorder = MCP::Guardrails::Audit::Recorder
+  config.audit_recorder = Reeve::Audit::Recorder
 
   # Optional sink for warnings (unguarded tools, degraded audit mode).
   config.logger = Rails.logger
@@ -40,7 +40,7 @@ end
 
 ## Guarantees
 
-- Reading `MCP::Guardrails.config` before `configure` returns defaults; the library is
+- Reading `Reeve.config` before `configure` returns defaults; the library is
   usable with zero configuration except that **every** call denies with `no_principal`
   until `principal_resolver` is set. Failing loudly at first invocation, not at boot, keeps
   the library loadable in contexts that never invoke a tool (SC-008).

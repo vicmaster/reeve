@@ -1,4 +1,4 @@
-# Quickstart: mcp-guardrails
+# Quickstart: reeve
 
 The whole adoption path, end to end. Target: under 15 minutes from an existing MCP server
 to a guarded, audited, test-asserted tool (SC-004).
@@ -6,22 +6,22 @@ to a guarded, audited, test-asserted tool (SC-004).
 ## 1. Install
 
 ```bash
-bundle add mcp-guardrails
-bin/rails generate mcp_guardrails:install
+bundle add reeve
+bin/rails generate reeve:install
 bin/rails db:migrate
 ```
 
 The generator creates two files:
 
-- `config/initializers/mcp_guardrails.rb` — with `principal_resolver` left as a TODO you
+- `config/initializers/reeve.rb` — with `principal_resolver` left as a TODO you
   must fill in, and `unguarded_tools` written explicitly with both options shown (FR-023).
-- `db/migrate/xxxx_create_mcp_guardrails_audit_entries.rb` — the ledger table.
+- `db/migrate/xxxx_create_reeve_audit_entries.rb` — the ledger table.
 
 ## 2. Say who the agent acts for
 
 ```ruby
-# config/initializers/mcp_guardrails.rb
-MCP::Guardrails.configure do |config|
+# config/initializers/reeve.rb
+Reeve.configure do |config|
   config.principal_resolver = ->(context) { User.find_by(id: context.metadata[:user_id]) }
   config.unguarded_tools    = :deny        # :deny (default) | :allow_with_warning
   config.redact_arguments   = %i[password token ssn]
@@ -46,6 +46,15 @@ class InvoiceSearchTool < FastMcp::Tool
 end
 ```
 
+If your tool returns a number or a summary rather than records, ask for the scoped
+relation instead of building your own:
+
+```ruby
+def call(**)
+  scoped(Invoice).where(overdue: true).count
+end
+```
+
 The tool body does not change (SC-005). The relation it returns is merged with
 `InvoicePolicy::Scope` for the invoking principal before it ever executes.
 
@@ -53,8 +62,8 @@ The tool body does not change (SC-005). The relation it returns is merged with
 
 ```ruby
 # spec/spec_helper.rb
-require "mcp/guardrails/rspec"
-RSpec.configure { |c| c.include MCP::Guardrails::Testing::Matchers }
+require "reeve/rspec"
+RSpec.configure { |c| c.include Reeve::Testing::Matchers }
 
 # spec/tools/invoice_search_tool_spec.rb
 RSpec.describe InvoiceSearchTool do
@@ -67,15 +76,15 @@ RSpec.describe InvoiceSearchTool do
 end
 
 # spec/compliance_spec.rb — checks every guarded tool at once
-RSpec.describe "MCP guardrails compliance" do
-  it_behaves_like "an mcp-guardrails compliant server"
+RSpec.describe "reeve compliance" do
+  it_behaves_like "a reeve-compliant server"
 end
 ```
 
 ## 5. Answer the incident question
 
 ```ruby
-MCP::Guardrails::Audit::Query
+Reeve::Audit::Query
   .for_principal(user)
   .for_agent("claude-desktop")
   .between(1.week.ago, Time.current)
@@ -90,9 +99,9 @@ it (SC-003).
 The core needs neither. Use the plain interface:
 
 ```ruby
-require "mcp/guardrails"
+require "reeve"
 
-MCP::Guardrails.invoke(
+Reeve.invoke(
   tool: InvoiceSearchTool,
   arguments: { query: "AC" },
   principal: current_user,
@@ -101,7 +110,7 @@ MCP::Guardrails.invoke(
 ```
 
 Same envelope, same guarantees, same ledger entry. The fast-mcp adapter
-(`require "mcp/guardrails/fast_mcp"`) is a convenience that builds the context for you.
+(`require "reeve/fast_mcp"`) is a convenience that builds the context for you.
 
 ## What you have not gained
 

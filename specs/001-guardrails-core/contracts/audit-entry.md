@@ -9,7 +9,7 @@ meaning of a value is MAJOR.
 
 ## Shape
 
-See [data-model.md](../data-model.md#auditentry--mcp_guardrails_audit_entries) for the
+See [data-model.md](../data-model.md#auditentry--reeve_audit_entries) for the
 column-level table. Contractual guarantees on top of it:
 
 1. **Exactly one row per invocation.** `invocation_id` is unique; a retry that reuses the
@@ -26,7 +26,7 @@ column-level table. Contractual guarantees on top of it:
 ## Query interface (FR-013)
 
 ```ruby
-Q = MCP::Guardrails::Audit::Query
+Q = Reeve::Audit::Query
 
 Q.for_principal(user)                       # => relation
 Q.for_agent("claude-desktop")

@@ -1,4 +1,4 @@
-# Tasks: mcp-guardrails v1 — Authorization, Audit, Testing Kit
+# Tasks: reeve v1 — Authorization, Audit, Testing Kit
 
 **Input**: Design documents from `/specs/001-guardrails-core/`
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/
@@ -18,19 +18,21 @@ that pins the guarantee precedes each implementation task.
 
 **Purpose**: A gem skeleton that loads and a CI that runs.
 
-- [ ] T001 Create gem skeleton: `mcp-guardrails.gemspec` (empty runtime dependency list),
-      `lib/mcp-guardrails.rb`, `lib/mcp/guardrails/version.rb`, `Gemfile`, `Rakefile`,
+- [ ] T001 Create gem skeleton: `reeve.gemspec` (empty runtime dependency list),
+      `lib/reeve.rb`, `lib/reeve/version.rb`, `Gemfile`, `Rakefile`,
       per plan.md structure
 - [ ] T002 [P] Add development dependencies in the Gemfile: rspec, minitest, rubocop,
       activerecord, activesupport, sqlite3, pundit, fast-mcp — all development-only, none in
       the gemspec
 - [ ] T003 [P] Configure RuboCop (`.rubocop.yml`) and the RSpec harness
       (`spec/spec_helper.rb`) with no Rails required by default
-- [ ] T004 [P] Add GitHub Actions CI matrix over Ruby 3.2/3.3/3.4 running specs + RuboCop
-- [ ] T005 Add a load-safety spec asserting `require "mcp-guardrails"` succeeds with no
+- [ ] T004 [P] Add GitHub Actions CI matrix over Ruby 3.0/3.2/3.4 running specs + RuboCop
+- [ ] T005 Add a load-safety spec asserting `require "reeve"` succeeds with no
       ActiveRecord, no Pundit, and no fast-mcp loaded (SC-008) — must fail before T001 lands
-- [ ] T006 [P] Claim the `mcp-guardrails` name on rubygems.org by pushing a 0.0.1 skeleton
-      release (PROJECT-BRIEF: claim early). Requires Victor's credentials — confirm before running
+- [ ] T006 [P] Claim `reeve` on rubygems.org with a 0.0.1 skeleton release. Verified
+      UNCLAIMED 2026-08-11 — it is a short common word with no MCP association, so the
+      squat risk is real and this should happen first. Requires Victor's credentials —
+      confirm before running
 
 **Checkpoint**: gem loads bare, CI green.
 
@@ -43,20 +45,20 @@ the parallel batch** — plan.md treats a kernel change during the batch as stop
 
 - [ ] T007 Write specs for `Decision`: allow/deny construction, `rule` required and never
       nil, reserved rule identifiers from data-model.md
-- [ ] T008 Implement `lib/mcp/guardrails/decision.rb` per data-model.md
+- [ ] T008 Implement `lib/reeve/decision.rb` per data-model.md
 - [ ] T009 [P] Write specs for `Configuration`: defaults, per-setting validation table in
       contracts/configuration.md, unknown setting raises, re-`configure` overrides
-- [ ] T010 Implement `lib/mcp/guardrails/configuration.rb` + `MCP::Guardrails.configure`
+- [ ] T010 Implement `lib/reeve/configuration.rb` + `Reeve.configure`
 - [ ] T011 [P] Write specs for `Context`: required/defaulted fields, unknown agent defaults
       to `"unknown"`, nil principal permitted at construction (denial happens in the envelope)
-- [ ] T012 Implement `lib/mcp/guardrails/context.rb`
-- [ ] T013 [P] Implement `lib/mcp/guardrails/errors.rb` — `DeniedError` exposing
+- [ ] T012 Implement `lib/reeve/context.rb`
+- [ ] T013 [P] Implement `lib/reeve/errors.rb` — `DeniedError` exposing
       `#tool_name`, `#principal_id`, `#rule`, `#detail`, message naming all four, plus a
       spec asserting the message never reveals record existence (FR-006)
 - [ ] T014 Write envelope specs from the data-model.md state diagram: every path terminates
       in exactly one audit write attempt, every deny carries a rule, no path returns records
       without scoping, principal state cleared in `ensure` even when the tool raises
-- [ ] T015 Implement `lib/mcp/guardrails/invocation.rb` — the single funnel: resolve
+- [ ] T015 Implement `lib/reeve/invocation.rb` — the single funnel: resolve
       principal → look up guard → authorize → execute → scope → record → return/raise.
       Depends on T008, T010, T012, T013. Collaborators (registry, scoper, recorder) are
       injected and null-object-defaulted so the kernel is testable before the modules exist
@@ -80,11 +82,11 @@ tool — each principal sees only their own, the unguarded tool returns nothing.
 - [ ] T017 [P] [US1] [W1] Registry specs: declaration at class-definition time, inheritance,
       redeclaration warns, enumerable, resettable
 - [ ] T018 [P] [US1] [W1] Guard DSL specs per contracts/tool-dsl.md: `guard_with`,
-      `redact`, `derives_from`, action override, missing-declaration behavior under both
+      `redact`, `scoped`, action override, missing-declaration behavior under both
       `unguarded_tools` settings
 - [ ] T019 [P] [US1] [W1] Scoper specs covering every row of the return-value table:
       relation, array of records, single out-of-scope record (denies, no existence leak),
-      mixed types, unpoliced type, derived without `derives_from`, nil/empty (allow, count 0)
+      mixed types, unpoliced type, non-record return without `scoped(...)`, nil/empty (allow, count 0)
 - [ ] T020 [P] [US1] [W1] Plain policy adapter specs; declaration-time error when the policy
       object lacks `authorize`/`scope`
 - [ ] T021 [P] [US1] [W1] Pundit adapter specs, skipped when Pundit is absent; `:auto`
@@ -94,12 +96,12 @@ tool — each principal sees only their own, the unguarded tool returns nothing.
 
 ### Implementation
 
-- [ ] T023 [US1] [W1] `lib/mcp/guardrails/authorization/registry.rb`
-- [ ] T024 [US1] [W1] `lib/mcp/guardrails/authorization/guard.rb` — the three macros
-- [ ] T025 [US1] [W1] `lib/mcp/guardrails/authorization/adapters/plain.rb`
-- [ ] T026 [US1] [W1] `lib/mcp/guardrails/authorization/adapters/pundit.rb`, loaded only
+- [ ] T023 [US1] [W1] `lib/reeve/authorization/registry.rb`
+- [ ] T024 [US1] [W1] `lib/reeve/authorization/guard.rb` — `guard_with`, `redact`, and the `scoped(Model)` instance helper
+- [ ] T025 [US1] [W1] `lib/reeve/authorization/adapters/plain.rb`
+- [ ] T026 [US1] [W1] `lib/reeve/authorization/adapters/pundit.rb`, loaded only
       when `defined?(Pundit)`
-- [ ] T027 [US1] [W1] `lib/mcp/guardrails/authorization/scoper.rb` — R4 result-shape dispatch
+- [ ] T027 [US1] [W1] `lib/reeve/authorization/scoper.rb` — result-shape dispatch plus `scoped()` usage tracking; a non-record return with no `scoped` call denies (R4)
 - [ ] T028 [US1] [W1] Wire registry + scoper + adapter into the envelope's injection points
       (no kernel signature change)
 - [ ] T029 [US1] [W1] Concurrency spec: same agent, two principals, interleaved invocations
@@ -135,13 +137,15 @@ fields; no library path mutates an entry.
 
 ### Implementation
 
-- [ ] T037 [US2] [W2] `lib/mcp/guardrails/audit/entry.rb` — AR model with immutability rules
-- [ ] T038 [US2] [W2] `lib/mcp/guardrails/audit/redactor.rb`
-- [ ] T039 [US2] [W2] `lib/mcp/guardrails/audit/recorder.rb` — one write path, synchronous,
-      inside the tool body's transaction
-- [ ] T040 [US2] [W2] `lib/mcp/guardrails/audit/query.rb`
+- [ ] T037 [US2] [W2] `lib/reeve/audit/entry.rb` — AR model with immutability rules
+- [ ] T038 [US2] [W2] `lib/reeve/audit/redactor.rb`
+- [ ] T039 [US2] [W2] `lib/reeve/audit/recorder.rb` — one write path, synchronous, in an
+      `ensure` block **in its own transaction**, so the trace survives a rollback of the
+      tool's own work (R5 corrected). Include a spec that raises inside the tool body and
+      asserts the ledger row is still there
+- [ ] T040 [US2] [W2] `lib/reeve/audit/query.rb`
 - [ ] T041 [US2] [W2] Migration template
-      `lib/generators/mcp_guardrails/install/templates/create_audit_entries.rb.tt`
+      `lib/generators/reeve/install/templates/create_audit_entries.rb.tt`
 - [ ] T042 [US2] [W2] Record the audit-entry contract version (`1`) in code and assert it
       matches contracts/audit-entry.md (FR-015)
 - [ ] T043 [US2] [W2] Document the INSERT+SELECT grant recommendation and the explicit
@@ -176,14 +180,14 @@ fixtures; green on the first, red with the right message on each of the others.
 
 ### Implementation
 
-- [ ] T049 [US3] [W3] `lib/mcp/guardrails/testing/checks/*.rb` + `Result`/`Report` — the
+- [ ] T049 [US3] [W3] `lib/reeve/testing/checks/*.rb` + `Result`/`Report` — the
       seven checks from the contract. All logic and all failure-message construction lives
       here; front-ends add none
 - [ ] T050 [US3] [W3] RSpec front-end: `testing/matchers/deny_access_for.rb`,
       `testing/matchers/audit_every_call.rb`, `testing/compliance_suite.rb` shared example
-      group, and the `lib/mcp/guardrails/rspec.rb` entry point
+      group, and the `lib/reeve/rspec.rb` entry point
 - [ ] T051 [US3] [W3] Minitest front-end: `testing/assertions.rb` +
-      `testing/compliance_assertions.rb` and the `lib/mcp/guardrails/minitest.rb` entry
+      `testing/compliance_assertions.rb` and the `lib/reeve/minitest.rb` entry
       point. Acceptance bar: a stock `rails new` app with no RSpec proves every guarantee
 - [ ] T052 [US3] [W3] Assert both RSpec and Minitest stay out of the gemspec; document the
       plain-Ruby path (rake task / CI script / boot assertion) with a runnable example
@@ -204,7 +208,7 @@ fixtures; green on the first, red with the right message on each of the others.
       a TODO, migration applies cleanly (FR-021, FR-023)
 - [ ] T054 [P] [US4] fast-mcp adapter specs: DSL available on `FastMcp::Tool` subclasses,
       context built from server metadata, adapter absent ⇒ core unaffected (FR-022, FR-024)
-- [ ] T055 [P] [US4] Plain-interface specs: `MCP::Guardrails.invoke` gives identical
+- [ ] T055 [P] [US4] Plain-interface specs: `Reeve.invoke` gives identical
       guarantees with no Rails and no server library (FR-024, quickstart §"Without Rails")
 
 ### Implementation
@@ -212,13 +216,13 @@ fixtures; green on the first, red with the right message on each of the others.
 - [ ] T056 [US4] Resolve research R2 OPEN: verify against the installed fast-mcp gem how a
       tool reaches per-request context; record the finding in research.md. Fall back to
       server-level context injection if in-tool access is unavailable
-- [ ] T057 [US4] `lib/mcp/guardrails/integrations/fast_mcp/context_builder.rb`
-- [ ] T058 [US4] `lib/mcp/guardrails/integrations/fast_mcp/tool_extension.rb` and the
-      `lib/mcp/guardrails/fast_mcp.rb` opt-in entry point
-- [ ] T059 [US4] `lib/generators/mcp_guardrails/install/install_generator.rb` + initializer
+- [ ] T057 [US4] `lib/reeve/integrations/fast_mcp/context_builder.rb`
+- [ ] T058 [US4] `lib/reeve/integrations/fast_mcp/tool_extension.rb` and the
+      `lib/reeve/fast_mcp.rb` opt-in entry point
+- [ ] T059 [US4] `lib/generators/reeve/install/install_generator.rb` + initializer
       template
 - [ ] T060 [US4] Build `spec/dummy` — minimal Rails app, two principals, shared record set,
-      three tools (relation-returning, single-record, derived)
+      three tools (relation-returning, single-record, aggregate via `scoped`)
 - [ ] T061 [US4] End-to-end integration spec walking the quickstart exactly as written
       (SC-004, SC-005)
 
@@ -257,9 +261,9 @@ fixtures; green on the first, red with the right message on each of the others.
 
 | Worktree | Tasks | Owns |
 |----------|-------|------|
-| W1 authorization | T017–T029 | `lib/mcp/guardrails/authorization/**` |
-| W2 audit | T030–T043 | `lib/mcp/guardrails/audit/**`, migration template |
-| W3 testing kit | T044–T052 | `lib/mcp/guardrails/testing/**`, `rspec.rb` |
+| W1 authorization | T017–T029 | `lib/reeve/authorization/**` |
+| W2 audit | T030–T043 | `lib/reeve/audit/**`, migration template |
+| W3 testing kit | T044–T052 | `lib/reeve/testing/**`, `rspec.rb` |
 
 Each merges independently behind `/code-review`. Success criteria for the trial are fixed in
 PROJECT-BRIEF.md: green without merge hell, less wall-clock than sequential, the review gate

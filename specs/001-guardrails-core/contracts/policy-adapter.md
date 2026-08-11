@@ -5,7 +5,7 @@
 ```ruby
 # Any object satisfying this protocol may be assigned to config.policy_adapter.
 class MyAdapter
-  # Returns MCP::Guardrails::Decision. Must never raise for an ordinary denial —
+  # Returns Reeve::Decision. Must never raise for an ordinary denial —
   # raising is treated as policy_error and fails closed.
   def authorize(principal:, policy:, action:, record: nil) = Decision.allow(rule: "...")
 
@@ -49,5 +49,5 @@ the developer learns immediately.
 
 Uses `:pundit` when Pundit is defined **and** the declared policy answers to Pundit's
 conventions; otherwise `:plain`. The chosen adapter is reported by
-`MCP::Guardrails.config.resolved_policy_adapter` so the compliance suite can assert on it
+`Reeve.config.resolved_policy_adapter` so the compliance suite can assert on it
 and so the choice is never a mystery.
