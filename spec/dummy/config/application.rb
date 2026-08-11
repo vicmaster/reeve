@@ -18,5 +18,13 @@ module Dummy
     config.consider_all_requests_local = true
     config.secret_key_base = "dummy-app-secret-key-base-for-specs-only"
     config.active_record.maintain_test_schema = false
+
+    # Rails 7.0 only; the setting is gone in 7.1+. Without it the app boots with a
+    # deprecation notice, and a dummy app that warns on boot is one nobody can assert
+    # silence on. Version-gated rather than respond_to?-gated, because Rails config
+    # objects accept any setting name and only complain when it is applied.
+    if Rails::VERSION::STRING.start_with?("7.0")
+      config.active_record.legacy_connection_handling = false
+    end
   end
 end

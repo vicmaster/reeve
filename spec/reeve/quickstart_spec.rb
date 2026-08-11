@@ -40,12 +40,14 @@ RSpec.describe "the quickstart", if: rails_available do
     ].each { |promise| expect(output).to include("ok #{promise}") }
   end
 
-  it "emits no warnings while doing it" do
+  it "emits no warnings of its own while doing it" do
     # A DSL that warns during ordinary correct use teaches people to ignore its warnings.
+    # Scoped to reeve's own output: the host framework's deprecations are real, but they
+    # are not ours, and failing the build on them would make this spec noise.
     output = run("spec/dummy/quickstart.rb")
 
     expect(output).not_to match(/^reeve:/)
-    expect(output).not_to match(/warning/i)
+    expect(output).not_to match(/reeve.*(warning|deprecat)/i)
   end
 
   # The acceptance bar for the Minitest front-end, executed rather than argued.
