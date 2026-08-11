@@ -21,6 +21,10 @@ module Reeve
     # already landed. Closing that window entirely needs a second connection or two-phase
     # commit, which is out of proportion for v1.
     class Recorder
+      # Free-form text from a policy or an exception message. Capped rather than trusted:
+      # it is the one column whose length the host does not control.
+      DETAIL_LIMIT = 1000
+
       def self.record(attributes)
         new.record(attributes)
       end
@@ -62,6 +66,7 @@ module Reeve
           arguments: redact(attributes),
           outcome: attributes[:outcome].to_s,
           rule: attributes[:rule],
+          detail: detail(attributes),
           record_type: attributes[:record_type],
           record_ids: ids,
           record_count: count,
@@ -107,6 +112,13 @@ module Reeve
         return [ids, count, truncated] unless ids.size > limit
 
         [ids.first(limit), [count, ids.size].max, true]
+      end
+
+      def detail(attributes)
+        value = attributes[:detail]
+        return nil if blank?(value)
+
+        value.to_s[0, DETAIL_LIMIT]
       end
 
       def blank?(value)

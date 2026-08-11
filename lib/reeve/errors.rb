@@ -58,12 +58,17 @@ module Reeve
   end
 
   # Raised when the ledger write fails and audit_failure_mode is :fail (FR-012).
+  #
+  # It carries a rule like any other denial, because the failure is not recorded anywhere
+  # else: the ledger is the thing that failed, so there is no row to read afterwards. The
+  # exception is the only artifact, and a host matching on rules can match on this one.
   class AuditWriteError < Error
-    attr_reader :invocation_id, :original_error
+    attr_reader :invocation_id, :original_error, :rule
 
     def initialize(invocation_id:, cause: nil)
       @invocation_id  = invocation_id&.to_s
       @original_error = cause
+      @rule           = Decision::AUDIT_WRITE_FAILED
       message = "reeve could not record invocation #{@invocation_id}"
       message = "#{message}: #{cause.message}" if cause
       super(message)

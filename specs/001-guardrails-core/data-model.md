@@ -111,6 +111,7 @@ Append-only. One row per guarded invocation, allowed or denied (FR-008).
 | `arguments` | json | no | Post-redaction (FR-011). |
 | `outcome` | string | no | `"allow"` or `"deny"`. |
 | `rule` | string | no | From `Decision#rule`; never null (FR-009). |
+| `detail` | text | yes | From `Decision#detail`: why the rule fired, in words. Free-form and capped at 1000 characters — hosts match on `rule`, humans read `detail`. Never names a record (FR-006). Added 2026-08-11; a nullable column, so the contract version stays 1. |
 | `record_type` | string | yes | Dominant returned type; null for derived/empty results. |
 | `record_ids` | json | no | Array; `[]` for denials and empty results. |
 | `record_count` | integer | no | True total, even when `record_ids` is truncated. |
@@ -171,8 +172,15 @@ one per FR-013 query axis.
                        └───────┬────────────────────────────────────┬───────────────┘
                           write ok                            write failed
                                │                                    │
-                               ▼                          default: Deny(audit_write_failed), raise
-                    return records / raise DeniedError     :warn mode: log, continue
+                               ▼                    default: raise AuditWriteError (rule
+                    return records / raise DeniedError    audit_write_failed); :warn: log on
+
+**Corrected 2026-08-11**: an earlier version of this diagram said a failed ledger write
+produced a `Deny(audit_write_failed)` row. It cannot — the ledger is the thing that just
+failed, so there is nowhere to write that row. The invocation raises `AuditWriteError`
+instead, and that error carries `rule == Decision::AUDIT_WRITE_FAILED` so a host can match
+on it the same way it matches any other rule. In `:warn` mode the failure is logged and the
+call continues, which is the whole point of opting into it.
 ```
 
 Invariants the tests pin:

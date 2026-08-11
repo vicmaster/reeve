@@ -40,6 +40,9 @@ class CreateReeveAuditEntries < ActiveRecord::Migration[7.0]
 
       t.string   :outcome,        null: false
       t.string   :rule,           null: false
+      # Diagnostic text explaining the rule ("policy raised ArgumentError: boom").
+      # Nullable and free-form: match on `rule`, read `detail`. Never names a record.
+      t.text     :detail
 
       t.string   :record_type
       t.json     :record_ids,     null: false

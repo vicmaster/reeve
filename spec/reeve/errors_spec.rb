@@ -104,6 +104,14 @@ RSpec.describe "Reeve errors" do
       expect(error.message).to include("abc-123")
       expect(error.message).to include("connection reset")
     end
+
+    # The ledger is what failed, so no row explains this one. The exception has to.
+    it "carries the reserved rule, so a host can match on it like any other" do
+      error = described_class.new(invocation_id: "abc-123")
+
+      expect(error.rule).to eq(Reeve::Decision::AUDIT_WRITE_FAILED)
+      expect(Reeve::Decision::RESERVED_RULES).to include(error.rule)
+    end
   end
 
   describe Reeve::ConfigurationError do

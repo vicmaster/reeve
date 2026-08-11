@@ -110,6 +110,46 @@ RSpec.describe "a guarded invocation, end to end" do
     expect(entry.outcome).to eq("deny")
   end
 
+  # Without this column the row says "policy_error" and nothing else, which is the least
+  # useful moment to have to go and reproduce the failure by hand.
+  it "records why the rule fired, not only that it did" do
+    stub_const("ExplodingPolicy", Class.new do
+      def self.name = "ExplodingPolicy"
+      def self.authorize(*) = raise(ArgumentError, "owner_id is missing")
+      def self.scope(_principal, relation) = relation
+    end)
+    stub_const("ExplodingTool", Class.new do
+      include Reeve::Guard
+
+      guard_with ExplodingPolicy
+      def call = Invoice.all
+    end)
+
+    expect { Reeve.invoke(tool: ExplodingTool, principal: alice) }
+      .to raise_error(Reeve::DeniedError)
+
+    expect(entry.rule).to eq("policy_error")
+    expect(entry.detail).to include("ArgumentError")
+    expect(entry.detail).to include("owner_id is missing")
+  end
+
+  it "keeps the detail of an out-of-scope denial free of the record it refused" do
+    bobs = Invoice.find_by(number: "B-0")
+    stub_const("ShowTool", Class.new do
+      include Reeve::Guard
+
+      guard_with InvoicePolicy
+      def call(id:) = Invoice.find(id)
+    end)
+
+    expect { Reeve.invoke(tool: ShowTool, arguments: { id: bobs.id }, principal: alice) }
+      .to raise_error(Reeve::DeniedError)
+
+    expect(entry.rule).to eq("out_of_scope_record")
+    expect(entry.detail.to_s).not_to include(bobs.number)
+    expect(entry.detail.to_s).not_to include(bobs.id.to_s)
+  end
+
   it "is queryable along the axes an incident is investigated by" do
     Reeve.invoke(tool: InvoiceSearchTool, arguments: { query: "A" },
                  principal: alice, agent: { id: "claude-desktop" })
