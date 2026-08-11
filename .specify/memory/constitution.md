@@ -73,7 +73,8 @@ answerable with a query, not an inference from application logs.
 
 Guarantees ship with the assertions that prove them. Every authorization or audit
 behavior MUST be expressible as a check a host application can run in its own CI via the
-testing kit (RSpec matchers plus a shared compliance suite). Within this repository,
+testing kit, from whichever test framework that application already uses. No guarantee may
+be provable in one framework only. Within this repository,
 behavior is developed test-first: a failing test that pins the guarantee precedes the
 implementation, and no authorization or audit change merges without a test that fails
 before it and passes after.
