@@ -243,7 +243,7 @@ fixtures; green on the first, red with the right message on each of the others.
       any unmapped criterion is a gap to close before release
 - [ ] T067 Clean-room provenance review before publishing (Constitution V): no proprietary
       names, schemas, or docs anywhere in the repo or its history
-- [ ] T068 CHANGELOG, semantic-version policy note, and the 0.1.0 release — push only on
+- [ ] T068 CHANGELOG, semantic-version policy note, `rubygems_mfa_required` metadata (omitted from 0.0.1 to avoid blocking the name claim; a security gem should require MFA to publish), and the 0.1.0 release — push only on
       Victor's explicit confirmation
 
 ---
