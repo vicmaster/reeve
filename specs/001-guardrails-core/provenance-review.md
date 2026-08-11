@@ -71,8 +71,26 @@ the job, both the maintainer's call:
    stars, 0 forks, 0 watchers and no issues or pull requests, so nothing is lost but the
    creation date.
 
-Until one of those is done, treat the redaction as complete for anyone browsing the
-repository normally, and incomplete against anyone who already recorded a SHA.
+**Decision (2026-08-11, maintainer): accept the residual. Neither option taken.**
+
+The rewrite stands; GitHub is not being asked to garbage-collect and the repository is not
+being recreated. The reasoning, recorded so it does not have to be reconstructed later:
+
+- What remains reachable by SHA is two facts — that a proprietary system of a given name
+  exists at a named employer, and a work email address. Neither is code, schema, class
+  name, migration structure or configuration shape, which is what Principle V exists to
+  protect. On that count the review found nothing at all.
+- The disclosure requires an old SHA to exploit. Those SHAs are not linked from anywhere
+  the repository now serves.
+- The repository had no audience at the time of the decision: 0 stars, 0 forks, 0
+  watchers, 0 issues, 0 pull requests.
+
+**Principle V publication gate: SIGNED OFF.** The clean-room requirement is met in
+substance and in the published artifact. The residual is a known, bounded, accepted
+exposure of two names, not of proprietary material.
+
+Anyone revisiting this should know the remedy is still available and still cheap: a
+support request to garbage-collect, or deleting and recreating the repository.
 
 ## Everything else: PASS
 
