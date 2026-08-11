@@ -241,10 +241,10 @@ fixtures; green on the first, red with the right message on each of the others.
 
 ## Phase 7: Polish & Release Readiness
 
-- [ ] T062 [P] README with the positioning line, the three-step quickstart, and a demo GIF
+- [x] T062 [P] README with the positioning line, the three-step quickstart, and a demo GIF
       placeholder (PROJECT-BRIEF launch notes)
-- [ ] T063 [P] Runnable example for every public entry point (FR-025, Constitution VI)
-- [ ] T064 [P] Performance spec: envelope overhead ≤ 5 ms excluding policy queries and the
+- [x] T063 [P] Runnable example for every public entry point (FR-025, Constitution VI)
+- [x] T064 [P] Performance spec: envelope overhead ≤ 5 ms excluding policy queries and the
       ledger insert; assert scoping adds no N+1 (plan.md Performance Goals)
 - [ ] T065 [P] Edge-case sweep — one spec per bullet in spec.md "Edge Cases", each asserting
       a denial or an explicit recorded outcome, never a silent pass (SC-006)

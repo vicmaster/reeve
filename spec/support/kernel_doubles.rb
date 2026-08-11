@@ -115,3 +115,16 @@ class ThreadSafeRecorder
     attributes
   end
 end
+
+# Counts writes without touching a database, for specs measuring the envelope itself.
+class CountingRecorder
+  attr_reader :count
+
+  def initialize
+    @count = 0
+  end
+
+  def record(_attributes)
+    @count += 1
+  end
+end
