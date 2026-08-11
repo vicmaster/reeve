@@ -49,6 +49,48 @@ Three things then hold:
 3. **Provable in CI.** `expect(tool).to deny_access_for(stranger)` in RSpec,
    `assert_denies_access_for` in Minitest, or the checks called directly from a rake task.
 
+## Proving it without a test framework
+
+The checks are plain objects, so the same guarantees are assertable outside a test suite —
+from a rake task, a CI script, or a boot-time assertion in staging. Neither RSpec nor
+Minitest needs to be installed:
+
+<!-- reeve:compliance-gate -->
+```ruby
+require "reeve/testing"
+
+report = Reeve::Checks.run_all(principals: [alice, bob])
+abort report.to_s unless report.passed?
+```
+
+`alice` and `bob` are two fixture principals with disjoint records — that disjointness is
+what makes a shared record identifier proof of a leak. As a Rails rake task:
+
+```ruby
+# lib/tasks/reeve.rake
+namespace :reeve do
+  desc "Fail the build if any guarded tool leaks or goes unaudited"
+  task compliance: :environment do
+    require "reeve/testing"
+
+    report = Reeve::Checks.run_all(principals: Reeve::Testing.compliance_principals)
+    abort report.to_s unless report.passed?
+    puts report
+  end
+end
+```
+
+A failing run prints the offending check, the offending tool, and the records that leaked:
+
+```text
+reeve compliance: 13 checks, 12 passed, 1 failed
+
+FAIL CrossPrincipalLeak
+  expected InvoiceSearchTool to return no records belonging to another principal, but it
+  returned 3 records to User#1 that also belong to User#2: Invoice#7, Invoice#8,
+  Invoice#9 (guard: InvoicePolicy, decision: allow via InvoicePolicy#index)
+```
+
 ## Planned for v1
 
 - Per-record authorization bridging Pundit or plain policy objects
