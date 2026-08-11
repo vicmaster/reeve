@@ -88,32 +88,32 @@ tool — each principal sees only their own, the unguarded tool returns nothing.
 
 ### Tests first
 
-- [ ] T017 [P] [US1] [W1] Registry specs: declaration at class-definition time, inheritance,
+- [x] T017 [P] [US1] [W1] Registry specs: declaration at class-definition time, inheritance,
       redeclaration warns, enumerable, resettable
-- [ ] T018 [P] [US1] [W1] Guard DSL specs per contracts/tool-dsl.md: `guard_with`,
+- [x] T018 [P] [US1] [W1] Guard DSL specs per contracts/tool-dsl.md: `guard_with`,
       `redact`, `scoped`, action override, missing-declaration behavior under both
       `unguarded_tools` settings
-- [ ] T019 [P] [US1] [W1] Scoper specs covering every row of the return-value table:
+- [x] T019 [P] [US1] [W1] Scoper specs covering every row of the return-value table:
       relation, array of records, single out-of-scope record (denies, no existence leak),
       mixed types, unpoliced type, non-record return without `scoped(...)`, nil/empty (allow, count 0)
-- [ ] T020 [P] [US1] [W1] Plain policy adapter specs; declaration-time error when the policy
+- [x] T020 [P] [US1] [W1] Plain policy adapter specs; declaration-time error when the policy
       object lacks `authorize`/`scope`
-- [ ] T021 [P] [US1] [W1] Pundit adapter specs, skipped when Pundit is absent; `:auto`
+- [x] T021 [P] [US1] [W1] Pundit adapter specs, skipped when Pundit is absent; `:auto`
       resolution reported via `resolved_policy_adapter`
-- [ ] T022 [P] [US1] [W1] Acceptance specs for spec.md US1 scenarios 1–6, including
+- [x] T022 [P] [US1] [W1] Acceptance specs for spec.md US1 scenarios 1–6, including
       fail-closed on a raising policy and denial with no resolvable principal
 
 ### Implementation
 
-- [ ] T023 [US1] [W1] `lib/reeve/authorization/registry.rb`
-- [ ] T024 [US1] [W1] `lib/reeve/authorization/guard.rb` — `guard_with`, `redact`, and the `scoped(Model)` instance helper
-- [ ] T025 [US1] [W1] `lib/reeve/authorization/adapters/plain.rb`
-- [ ] T026 [US1] [W1] `lib/reeve/authorization/adapters/pundit.rb`, loaded only
+- [x] T023 [US1] [W1] `lib/reeve/authorization/registry.rb`
+- [x] T024 [US1] [W1] `lib/reeve/authorization/guard.rb` — `guard_with`, `redact`, and the `scoped(Model)` instance helper
+- [x] T025 [US1] [W1] `lib/reeve/authorization/adapters/plain.rb`
+- [x] T026 [US1] [W1] `lib/reeve/authorization/adapters/pundit.rb`, loaded only
       when `defined?(Pundit)`
-- [ ] T027 [US1] [W1] `lib/reeve/authorization/scoper.rb` — result-shape dispatch plus `scoped()` usage tracking; a non-record return with no `scoped` call denies (R4)
-- [ ] T028 [US1] [W1] Wire registry + scoper + adapter into the envelope's injection points
+- [x] T027 [US1] [W1] `lib/reeve/authorization/scoper.rb` — result-shape dispatch plus `scoped()` usage tracking; a non-record return with no `scoped` call denies (R4)
+- [x] T028 [US1] [W1] Wire registry + scoper + adapter into the envelope's injection points
       (no kernel signature change)
-- [ ] T029 [US1] [W1] Concurrency spec: same agent, two principals, interleaved invocations
+- [x] T029 [US1] [W1] Concurrency spec: same agent, two principals, interleaved invocations
       across threads — no principal leakage
 
 **Checkpoint**: US1 delivers value alone — scoping works, audit not yet required.
@@ -129,35 +129,35 @@ fields; no library path mutates an entry.
 
 ### Tests first
 
-- [ ] T030 [P] [US2] [W2] Entry model specs: readonly after persist, destroy aborts, all
+- [x] T030 [P] [US2] [W2] Entry model specs: readonly after persist, destroy aborts, all
       columns from data-model.md present and typed, `invocation_id` uniqueness
-- [ ] T031 [P] [US2] [W2] Recorder specs: exactly one row per invocation for allow and deny,
+- [x] T031 [P] [US2] [W2] Recorder specs: exactly one row per invocation for allow and deny,
       `rule` never null, `occurred_at` is invocation time not write time, `guard: "none"`
       under `:allow_with_warning`
-- [ ] T032 [P] [US2] [W2] Redactor specs: global + per-tool names, recursive into nested
+- [x] T032 [P] [US2] [W2] Redactor specs: global + per-tool names, recursive into nested
       hashes, names survive and values do not, no unredacted copy written anywhere (FR-011)
-- [ ] T033 [P] [US2] [W2] Truncation specs: over `max_recorded_ids`, `record_count` stays
+- [x] T033 [P] [US2] [W2] Truncation specs: over `max_recorded_ids`, `record_count` stays
       true and `truncated` is set (FR-014)
-- [ ] T034 [P] [US2] [W2] Failure-mode specs: default `:fail` fails the invocation with rule
+- [x] T034 [P] [US2] [W2] Failure-mode specs: default `:fail` fails the invocation with rule
       `audit_write_failed`; `:warn` logs and continues (FR-012)
-- [ ] T035 [P] [US2] [W2] Query specs for all five axes and their composition (FR-013, SC-003)
-- [ ] T036 [P] [US2] [W2] Migration spec: table and every index from data-model.md created,
+- [x] T035 [P] [US2] [W2] Query specs for all five axes and their composition (FR-013, SC-003)
+- [x] T036 [P] [US2] [W2] Migration spec: table and every index from data-model.md created,
       migration applies and rolls back cleanly
 
 ### Implementation
 
-- [ ] T037 [US2] [W2] `lib/reeve/audit/entry.rb` — AR model with immutability rules
-- [ ] T038 [US2] [W2] `lib/reeve/audit/redactor.rb`
-- [ ] T039 [US2] [W2] `lib/reeve/audit/recorder.rb` — one write path, synchronous, in an
+- [x] T037 [US2] [W2] `lib/reeve/audit/entry.rb` — AR model with immutability rules
+- [x] T038 [US2] [W2] `lib/reeve/audit/redactor.rb`
+- [x] T039 [US2] [W2] `lib/reeve/audit/recorder.rb` — one write path, synchronous, in an
       `ensure` block **in its own transaction**, so the trace survives a rollback of the
       tool's own work (R5 corrected). Include a spec that raises inside the tool body and
       asserts the ledger row is still there
-- [ ] T040 [US2] [W2] `lib/reeve/audit/query.rb`
-- [ ] T041 [US2] [W2] Migration template
+- [x] T040 [US2] [W2] `lib/reeve/audit/query.rb`
+- [x] T041 [US2] [W2] Migration template
       `lib/generators/reeve/install/templates/create_audit_entries.rb.tt`
-- [ ] T042 [US2] [W2] Record the audit-entry contract version (`1`) in code and assert it
+- [x] T042 [US2] [W2] Record the audit-entry contract version (`1`) in code and assert it
       matches contracts/audit-entry.md (FR-015)
-- [ ] T043 [US2] [W2] Document the INSERT+SELECT grant recommendation and the explicit
+- [x] T043 [US2] [W2] Document the INSERT+SELECT grant recommendation and the explicit
       non-guarantees from contracts/audit-entry.md
 
 **Checkpoint**: every guarded call is recorded and queryable.

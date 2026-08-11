@@ -2,6 +2,7 @@
 
 require "active_record"
 require "reeve/audit"
+require "support/optional/database"
 
 # The ActiveRecord harness for the audit specs, and only for them.
 #
@@ -19,12 +20,10 @@ module Ledger
   )
 
   class << self
+    # The connection is shared with the other ActiveRecord-backed specs; see
+    # spec/support/optional/database.rb for why it is one connection and one file.
     def connect!
-      return if @connected
-
-      ActiveRecord::Migration.verbose = false
-      ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
-      @connected = true
+      SpecDatabase.connect!
     end
 
     # The migration class the install generator copies into the host application.

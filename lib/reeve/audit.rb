@@ -62,9 +62,9 @@ module Reeve
       # ledger is useful on its own, and a host running audit without guards should get
       # the global redaction list rather than a NameError.
       def guard_registry
-        return nil unless defined?(Reeve::Authorization::Registry)
+        return nil unless Reeve.respond_to?(:registry)
 
-        Reeve::Authorization::Registry
+        Reeve.registry
       end
 
       # contracts/configuration.md documents `audit_recorder` as defaulting to nil, "which

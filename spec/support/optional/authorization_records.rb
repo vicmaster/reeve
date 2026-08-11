@@ -3,21 +3,7 @@
 # A minimal ActiveRecord world for the authorization specs: two owners, two record types,
 # and a policy per type. ActiveRecord is a development dependency only — this file is
 # required by the specs that need it, never by the library.
-require "active_record"
-require "logger"
-require "tmpdir"
-
-ActiveRecord::Base.logger = nil
-
-# A file database rather than :memory: — sqlite gives every connection its own in-memory
-# database, so the concurrency specs, which run each invocation on its own thread, would
-# otherwise find an empty schema.
-REEVE_SPEC_DATABASE = File.join(Dir.tmpdir, "reeve-spec-#{Process.pid}.sqlite3")
-
-unless ActiveRecord::Base.connected?
-  ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: REEVE_SPEC_DATABASE)
-  at_exit { FileUtils.rm_f(REEVE_SPEC_DATABASE) }
-end
+require_relative "database"
 
 ActiveRecord::Schema.verbose = false
 ActiveRecord::Schema.define do
