@@ -27,7 +27,20 @@ module Reeve
     CONTRACT_VERSION = 1
 
     TABLE_NAME = "reeve_audit_entries"
+
+    class << self
+      # Where per-tool redaction declarations come from: the authorization registry, if
+      # the authorization module is loaded. Duck-typed and optional on purpose — the
+      # ledger is useful on its own, and a host running audit without guards should get
+      # the global redaction list rather than a NameError.
+      def guard_registry
+        return nil unless defined?(Reeve::Authorization::Registry)
+
+        Reeve::Authorization::Registry
+      end
+    end
   end
 end
 
+require_relative "audit/redactor"
 require_relative "audit/entry"
