@@ -29,7 +29,7 @@ that pins the guarantee precedes each implementation task.
 - [ ] T004 [P] Add GitHub Actions CI matrix over Ruby 3.0/3.2/3.4 running specs + RuboCop
 - [ ] T005 Add a load-safety spec asserting `require "reeve"` succeeds with no
       ActiveRecord, no Pundit, and no fast-mcp loaded (SC-008) — must fail before T001 lands
-- [ ] T006 [P] Claim `reeve` on rubygems.org with a 0.0.1 skeleton release. Verified
+- [x] T006 [P] Claim `reeve` on rubygems.org with a 0.0.1 skeleton release. DONE 2026-08-11 — published, owner `vicmaster`, zero runtime deps. Verified
       UNCLAIMED 2026-08-11 — it is a short common word with no MCP association, so the
       squat risk is real and this should happen first. Requires Victor's credentials —
       confirm before running
