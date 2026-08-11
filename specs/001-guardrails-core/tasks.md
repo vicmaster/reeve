@@ -246,11 +246,11 @@ fixtures; green on the first, red with the right message on each of the others.
 - [x] T063 [P] Runnable example for every public entry point (FR-025, Constitution VI)
 - [x] T064 [P] Performance spec: envelope overhead ≤ 5 ms excluding policy queries and the
       ledger insert; assert scoping adds no N+1 (plan.md Performance Goals)
-- [ ] T065 [P] Edge-case sweep — one spec per bullet in spec.md "Edge Cases", each asserting
+- [x] T065 [P] Edge-case sweep — one spec per bullet in spec.md "Edge Cases", each asserting
       a denial or an explicit recorded outcome, never a silent pass (SC-006)
-- [ ] T066 [P] Success-criteria audit: map SC-001 … SC-008 to the specs that prove them;
+- [x] T066 [P] Success-criteria audit: map SC-001 … SC-008 to the specs that prove them;
       any unmapped criterion is a gap to close before release
-- [ ] T067 Clean-room provenance review before publishing (Constitution V): no proprietary
+- [~] T067 Clean-room provenance review before publishing (Constitution V): no proprietary
       names, schemas, or docs anywhere in the repo or its history
 - [ ] T068 CHANGELOG, semantic-version policy note, `rubygems_mfa_required` metadata (omitted from 0.0.1 to avoid blocking the name claim; a security gem should require MFA to publish), and the 0.1.0 release — push only on
       Victor's explicit confirmation

@@ -153,9 +153,10 @@ RSpec.describe "US1: scope every tool call to the acting human" do
     end
     missing = Reeve.invoke(tool: InvoiceShowTool, arguments: { id: 999_999 }, principal: alice)
 
-    # A record that does not exist is a nil result, which is allowed and empty; a record
-    # that exists but is not yours is a denial that says nothing about it. Neither answer
-    # tells the agent that the other principal's invoice is there.
+    # The denial names no record: not its number, not its id. It does, however, differ
+    # from the nil a missing record produces, so an unscoped by-id fetch still discloses
+    # existence — see spec/reeve/edge_cases_spec.rb and contracts/tool-dsl.md, where that
+    # limitation and its remedy (fetch through `scoped`) are stated.
     expect(missing).to be_nil
     expect(out_of_scope).not_to include(bobs.number)
     expect(out_of_scope).not_to include(bobs.id.to_s)

@@ -91,6 +91,17 @@ Reeve.invoke(tool: InvoiceShowTool, arguments: { id: 41 }, principal: alice)
 #    out_of_scope_record (the requested record is not within this principal's scope)
 ```
 
+The error names the rule and never names the record. One caveat worth knowing: fetching
+from the unscoped model still lets a caller tell "someone else's" (a denial) from "no such
+record" (`nil`). If that distinction matters, fetch through `scoped`, where both answers
+are `nil`:
+
+```ruby
+def call(id:)
+  scoped(Invoice).find_by(id: id)
+end
+```
+
 Anything that is not a record — a count, a sum, a summary — is safe only when it was
 computed from `scoped`, because then the tool never held unscoped data:
 
