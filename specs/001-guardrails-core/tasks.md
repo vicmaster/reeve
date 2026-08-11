@@ -173,32 +173,32 @@ fixtures; green on the first, red with the right message on each of the others.
 
 ### Tests first
 
-- [ ] T044 [P] [US3] [W3] Build the broken fixtures: a cross-principal leaker and an
+- [x] T044 [P] [US3] [W3] Build the broken fixtures: a cross-principal leaker and an
       envelope-bypassing tool, plus a correct control tool
-- [ ] T045 [P] [US3] [W3] Check specs — one per check in the contracts/testing-kit.md table.
+- [x] T045 [P] [US3] [W3] Check specs — one per check in the contracts/testing-kit.md table.
       Each returns a `Result` with `passed?`, the exact failure message, and structured
       details; each fails for the right reason on a purpose-built violation (FR-016, FR-017,
       FR-019). Checks load no test framework
-- [ ] T046 [P] [US3] [W3] `Checks.run_all` / `Report` specs: every registered guarded tool
+- [x] T046 [P] [US3] [W3] `Checks.run_all` / `Report` specs: every registered guarded tool
       checked, aggregate pass/fail, human-readable report body (FR-018)
-- [ ] T047 [P] [US3] [W3] Cross-front-end parity spec: one shared example table drives the
+- [x] T047 [P] [US3] [W3] Cross-front-end parity spec: one shared example table drives the
       same fixtures through RSpec, Minitest, and direct plain-Ruby calls; outcomes and
       messages must be identical (SC-009, FR-026)
-- [ ] T048 [P] [US3] [W3] Isolation spec: the kit runs with no MCP client, no network, no
+- [x] T048 [P] [US3] [W3] Isolation spec: the kit runs with no MCP client, no network, no
       server process — and the checks run with neither RSpec nor Minitest loaded (FR-020)
 
 ### Implementation
 
-- [ ] T049 [US3] [W3] `lib/reeve/testing/checks/*.rb` + `Result`/`Report` — the
+- [x] T049 [US3] [W3] `lib/reeve/testing/checks/*.rb` + `Result`/`Report` — the
       seven checks from the contract. All logic and all failure-message construction lives
       here; front-ends add none
-- [ ] T050 [US3] [W3] RSpec front-end: `testing/matchers/deny_access_for.rb`,
+- [x] T050 [US3] [W3] RSpec front-end: `testing/matchers/deny_access_for.rb`,
       `testing/matchers/audit_every_call.rb`, `testing/compliance_suite.rb` shared example
       group, and the `lib/reeve/rspec.rb` entry point
-- [ ] T051 [US3] [W3] Minitest front-end: `testing/assertions.rb` +
+- [x] T051 [US3] [W3] Minitest front-end: `testing/assertions.rb` +
       `testing/compliance_assertions.rb` and the `lib/reeve/minitest.rb` entry
       point. Acceptance bar: a stock `rails new` app with no RSpec proves every guarantee
-- [ ] T052 [US3] [W3] Assert both RSpec and Minitest stay out of the gemspec; document the
+- [x] T052 [US3] [W3] Assert both RSpec and Minitest stay out of the gemspec; document the
       plain-Ruby path (rake task / CI script / boot assertion) with a runnable example
 
 **Checkpoint**: the three modules are complete and independently green. Merge W1→W2→W3 with
