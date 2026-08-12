@@ -169,6 +169,48 @@ RSpec.describe "policy adapters" do
       expect(described_class.missing_methods(NoScopePolicy)).to include(:Scope)
     end
 
+    # `class LeadPolicy < LeadBasePolicy; end` is the ordinary Pundit shape, and it used
+    # to be rejected at declaration time because the Scope lives on the superclass.
+    describe "a policy inheriting its Scope" do
+      let(:inheriting_policy) do
+        stub_const("BaseWidgetPolicy", pundit_policy)
+        stub_const("InheritingWidgetPolicy", Class.new(BaseWidgetPolicy))
+      end
+
+      it "is recognised, with nothing reported missing" do
+        expect(described_class.supports?(inheriting_policy)).to be(true)
+        expect(described_class.missing_methods(inheriting_policy)).to be_empty
+      end
+
+      it "resolves the inherited scope it was accepted for" do
+        expect(adapter.scope(principal: principal, policy: inheriting_policy, relation: [1, 2, 3]))
+          .to eq([1, 3])
+      end
+
+      it "asks the inherited query method" do
+        expect(adapter.authorize(principal: principal, policy: inheriting_policy, action: :index))
+          .to be_allowed
+      end
+
+      # The shape the failure was actually reported in: `guard_with LeadPolicy` refusing
+      # the declaration outright.
+      it "is accepted at declaration time under :auto" do
+        expect { Reeve::Authorization::Adapter.validate!(inheriting_policy, :auto) }
+          .not_to raise_error
+        expect(Reeve::Authorization::Adapter.resolve_name(inheriting_policy, :auto)).to eq(:pundit)
+      end
+    end
+
+    # The narrow check was there for a reason: without it, `::Scope` at top level makes
+    # every unrelated class look Pundit-shaped. Walking the ancestry must stop at Object.
+    it "does not mistake a top-level Scope constant for a policy's own" do
+      stub_const("Scope", Class.new)
+      stub_const("LeakyPolicy", Class.new { def index? = true })
+
+      expect(described_class.supports?(LeakyPolicy)).to be(false)
+      expect(described_class.missing_methods(LeakyPolicy)).to include(:Scope)
+    end
+
     it "asks the query method and names it as the rule" do
       decision = adapter.authorize(principal: principal, policy: pundit_policy, action: :index)
 

@@ -4,6 +4,17 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
+## [Unreleased]
+
+### Fixed
+
+- A Pundit policy that inherits its `Scope` from a base policy (`class LeadPolicy <
+  LeadBasePolicy`) is now recognised. Policy detection looked only at the policy's own
+  namespace, so the ordinary Pundit inheritance pattern was refused at declaration time
+  with `ConfigurationError`. Detection now walks the policy's ancestry, stopping before
+  `Object` so a top-level `Scope` constant still cannot make an unrelated class look
+  Pundit-shaped. ([#3](https://github.com/vicmaster/reeve/issues/3))
+
 ## [0.1.0] - 2026-08-11
 
 First working release. The published 0.0.1 was a placeholder holding the gem name.
