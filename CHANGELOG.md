@@ -56,6 +56,13 @@ table now fails on the missing column even when a bump was purely semantic.
 - `contracts/audit-entry.md` no longer claims the contract version is "recorded in the
   initializer". It never was — which is what prompted the `contract_version` column above,
   so that from contract 2 the claim is simply true.
+- The envelope-overhead spec compares the fastest call on each side rather than the mean
+  of two separately-timed windows. A single GC pause or scheduler preemption landing in
+  one window and not the other lands whole in the difference — 300ms over fifty runs is
+  6ms per call against a 5ms budget, from a busy machine rather than a regression. It
+  loses no sensitivity: a regression is paid on every call, so it slows the fastest trial
+  too. Verified both ways — an injected one-off stall moves the measurement from 6.65ms to
+  0.23ms, and 6ms added to every call still fails at 7.13ms.
 - The spec suite declares UTF-8 (`spec/spec_helper.rb`). The README-spec encoding bug was
   one instance of five: eleven examples across `readme_spec`, `contract_version_spec`,
   `migration_spec`, `install_generator_spec`, `framework_neutrality_spec`,
