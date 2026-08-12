@@ -20,10 +20,16 @@ module Reeve
       #   checking checks nothing.
       # * The **version number** is compared against what the ledger model reports, which
       #   is this gem's own +Audit::CONTRACT_VERSION+ — so by default it compares the gem
-      #   to itself and can only pass. Nothing in the host's database records which
-      #   contract version it was migrated for. It earns its keep when a host passes
-      #   `expected:` to pin the version it built its exports against, which turns a
-      #   silent shape change into a failing check.
+      #   to itself and can only pass. It earns its keep when a host passes `expected:` to
+      #   pin the version it built its exports against.
+      #
+      # Those two are not as separate as they look, and that is by design. A contract bump
+      # is defined as a change to the shape or to what a value means; every such bump also
+      # moves the `contract_version` column, which means the column list catches a stale
+      # table even when the bump was purely semantic. Contract 2 is the worked example: the
+      # change was `metadata`'s meaning, no existing column moved, and a host still on the
+      # contract 1 table fails here on a missing `contract_version` column rather than
+      # passing while writing rows nothing can interpret.
       #
       # The constant below is written out rather than read from +Audit+ for the same
       # reason the column list is, and one more: the testing kit loads with no ledger and
@@ -39,7 +45,7 @@ module Reeve
         COLUMNS = %w[
           invocation_id occurred_at agent_id agent_name principal_type principal_id
           tool_name arguments outcome rule detail record_type record_ids record_count
-          truncated derived guard duration_ms metadata
+          truncated derived guard duration_ms metadata contract_version
         ].freeze
 
         EXPECTED_VERSION = 2

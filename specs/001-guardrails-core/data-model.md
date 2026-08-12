@@ -119,7 +119,8 @@ Append-only. One row per guarded invocation, allowed or denied (FR-008).
 | `derived` | boolean | no | Default false; true when the result was a value derived via `scoped(...)` rather than records (R4). |
 | `guard` | string | no | `"policy"`, or `"none"` when running in `:allow_with_warning` mode (R9). |
 | `duration_ms` | integer | yes | Envelope wall time. |
-| `metadata` | json | yes | Host-supplied extras; never populated by the core. |
+| `metadata` | json | yes | The transport detail the caller passed as `metadata:` — headers, request ids — post-redaction, by the same redactor and declared names as `arguments`. Null when the caller passed none. Written NULL unconditionally through contract 1; populated from contract 2. |
+| `contract_version` | integer | no | The audit-entry contract this row was written under, stamped by the recorder from `Audit::CONTRACT_VERSION`. Lets an export be read correctly across an upgrade instead of guessing which rules applied to a row. Added at contract 2. |
 
 Indexes: unique on `invocation_id`; composite on `(principal_type, principal_id, occurred_at)`
 and `(tool_name, occurred_at)` and `(agent_id, occurred_at)` and `(outcome, occurred_at)` —

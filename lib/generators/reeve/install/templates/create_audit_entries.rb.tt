@@ -14,7 +14,7 @@
 #   GRANT INSERT, SELECT ON reeve_audit_entries TO app_role;
 #   GRANT USAGE  ON SEQUENCE reeve_audit_entries_id_seq TO app_role;
 #
-# Also explicitly out of scope for v1, so you can plan around it:
+# Also explicitly out of scope for now, so you can plan around it:
 #   * no retention, rotation or archival — this table grows until you prune it, and
 #     pruning is your policy, run by a role that is allowed to delete;
 #   * no cryptographic chaining or tamper-evidence. If that lands later it arrives as a
@@ -53,6 +53,14 @@ class CreateReeveAuditEntries < ActiveRecord::Migration[7.0]
       t.string   :guard,          null: false
       t.integer  :duration_ms
       t.json     :metadata
+
+      # The audit-entry contract version this row was written under. A ledger outlives
+      # the gem version that wrote it, and a row that cannot name its own shape has to be
+      # interpreted by guesswork: contract 1 wrote `metadata` NULL whatever the caller
+      # passed, so on a version 1 row NULL means "never recorded" and on a version 2 row
+      # it means "the caller passed none". Stamping each row keeps an export readable
+      # across an upgrade instead of collapsing that distinction.
+      t.integer  :contract_version, null: false
     end
 
     add_index :reeve_audit_entries, :invocation_id, unique: true

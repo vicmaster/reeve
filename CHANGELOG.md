@@ -9,13 +9,30 @@ Versioning](https://semver.org), with one rule specific to what it does — see
 Everything here came out of running 0.1.0 against a real Rails 8.1 application rather than
 against its own test suite. The Pundit fix is the one that blocks adoption.
 
-**Audit-entry contract version: `1` → `2`.** No column was added, removed or renamed, so
-no migration is required and no existing query breaks. What changed is what a value means:
-`metadata` was written NULL on every row through version 1, and now carries what the
-caller passed. Anything mapping version 1 rows could reasonably have read that column as
-always empty, and this project's own versioning rule calls that MAJOR — hence 0.2.0 rather
-than a patch. A host pinning the contract with
-`Reeve::Checks::ContractVersion.new(expected: 1)` should move it to `2`.
+**Audit-entry contract version: `1` → `2`.** Two changes, one bump.
+
+`metadata` was written NULL on every row through version 1 and now carries what the caller
+passed. Anything mapping version 1 rows could reasonably have read that column as always
+empty, and this project's own versioning rule calls a change in what a value means MAJOR —
+hence 0.2.0 rather than a patch.
+
+New non-null `contract_version` column, stamped on every row. Version 1 rows could not
+name their own shape, which is exactly what made the `metadata` change ambiguous to a
+reader: on a version 1 row a NULL `metadata` means "never recorded", on a version 2 row it
+means "the caller passed none". Stamping the row settles that at read time instead of
+requiring a reader to know when the writing gem was deployed, and it makes every future
+bump legible on the row. It also gives `Checks::ContractVersion` real teeth — a stale
+table now fails on the missing column even when a bump was purely semantic.
+
+**Upgrading from 0.1.0:**
+
+- Re-run `bin/rails generate reeve:install` and migrate, or add the column by hand:
+  `add_column :reeve_audit_entries, :contract_version, :integer, null: false, default: 1`
+  — `default: 1` is correct for existing rows, since that is the contract they were
+  written under. Drop the default afterwards if you prefer; the recorder always sets it.
+- A host pinning `Reeve::Checks::ContractVersion.new(expected: 1)` moves it to `2`.
+- **A custom `audit_recorder` that writes to `Reeve::Audit::Entry` must now set
+  `contract_version`.** The model rejects a row without it.
 
 ### Added
 
@@ -37,10 +54,8 @@ than a patch. A host pinning the contract with
   same declared names as the arguments, so `Authorization` does not land in the ledger.
   This is the change behind the contract-version bump above.
 - `contracts/audit-entry.md` no longer claims the contract version is "recorded in the
-  initializer". It never was, and nothing in a host's database records which version its
-  table was migrated for — so `Checks::ContractVersion` compares the gem against itself
-  unless the host passes `expected:`. The column list is the half of that check that
-  genuinely tests the host's table, and both halves are now documented for what they are.
+  initializer". It never was — which is what prompted the `contract_version` column above,
+  so that from contract 2 the claim is simply true.
 - The spec suite declares UTF-8 (`spec/spec_helper.rb`). The README-spec encoding bug was
   one instance of five: eleven examples across `readme_spec`, `contract_version_spec`,
   `migration_spec`, `install_generator_spec`, `framework_neutrality_spec`,

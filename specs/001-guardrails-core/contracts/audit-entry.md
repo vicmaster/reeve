@@ -6,20 +6,30 @@ downstream exports and SIEM mappings depend on it.
 **Contract version**: `2`. Adding a nullable column is a MINOR change. Removing a column,
 renaming one, or changing the meaning of a value is MAJOR.
 
-Asserted by `Reeve::Checks::ContractVersion`, with one limit worth stating plainly: the
-host's database does not record which contract version it was migrated for, so that check
-compares the gem against itself unless the host passes `expected:` to pin the version its
-exports were built against. What it genuinely verifies against the host's table is the
-column list. Earlier revisions of this document claimed the version was "recorded in the
-initializer"; it never was.
+Asserted by `Reeve::Checks::ContractVersion`, which compares both the column list and the
+version against the host's table. Every bump moves the `contract_version` column, so the
+column list catches a stale table even when the bump was purely semantic. A host may pass
+`expected:` to pin the version its exports were built against.
+
+Earlier revisions of this document claimed the version was "recorded in the initializer".
+It never was; from contract 2 it is recorded on every row.
 
 ### History
 
-- **2** (2026-08-12) — `metadata` carries the transport detail the caller passed. Through
-  version 1 it was written NULL on every row whatever was passed, so anything mapping
-  version 1 rows could reasonably have read the column as always empty. No column was
-  added, removed or renamed; what a value means changed, which this document's own rule
-  makes MAJOR.
+- **2** (2026-08-12) — Two changes, one bump.
+  - `metadata` carries the transport detail the caller passed. Through version 1 it was
+    written NULL on every row whatever was passed, so anything mapping version 1 rows
+    could reasonably have read the column as always empty. What a value means changed,
+    which this document's own rule makes MAJOR.
+  - New `contract_version` column, non-null, stamped by the recorder. Version 1 rows
+    could not name their own shape, which is what made the `metadata` change ambiguous to
+    a reader in the first place: on a version 1 row a NULL `metadata` means "never
+    recorded", on a version 2 row it means "the caller passed none". Every future bump is
+    legible on the row rather than inferred from when it was written.
+
+    **Breaking for custom recorders.** A host that configures `audit_recorder` and writes
+    to `Reeve::Audit::Entry` must now set `contract_version`; the model rejects a row
+    without it.
 - **1** — initial shape.
 
 ## Shape
