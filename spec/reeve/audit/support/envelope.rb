@@ -24,12 +24,14 @@ module Envelope
              recorder: Reeve::Audit::Recorder,
              invocation_id: nil,
              invoked_at: nil,
+             metadata: nil,
              &tool)
     Reeve.config.principal_resolver = ->(_context) { principal }
     body = tool || -> { [] }
 
     Reeve::Invocation.call(
-      context(tool_name, arguments, agent, invocation_id, invoked_at),
+      context(tool_name: tool_name, arguments: arguments, agent: agent,
+              invocation_id: invocation_id, invoked_at: invoked_at, metadata: metadata),
       registry: FakeRegistry.new(guard.nil? ? {} : { tool_name => guard }),
       authorizer: FakeAuthorizer.new(decision || Reeve::Decision.allow(rule: "InvoicePolicy#index?")),
       scoper: FakeScoper.new(scope_result),
@@ -37,14 +39,8 @@ module Envelope
     ) { body.call }
   end
 
-  def context(tool_name, arguments, agent, invocation_id, invoked_at)
-    Reeve::Context.new(
-      tool_name: tool_name,
-      arguments: arguments,
-      agent: agent,
-      invocation_id: invocation_id,
-      invoked_at: invoked_at
-    )
+  def context(**attributes)
+    Reeve::Context.new(**attributes)
   end
 
   def entries

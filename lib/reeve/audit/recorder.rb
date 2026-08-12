@@ -89,7 +89,7 @@ module Reeve
           derived: attributes[:derived] ? true : false,
           guard: blank?(attributes[:guard]) ? "policy" : attributes[:guard].to_s,
           duration_ms: attributes[:duration_ms],
-          metadata: attributes[:metadata]
+          metadata: redact_metadata(attributes)
         )
       end
 
@@ -113,6 +113,20 @@ module Reeve
 
       def redact(attributes)
         Redactor.for(attributes[:tool_name], config: config).call(attributes[:arguments])
+      end
+
+      # Metadata is transport detail, and the transport is where the credentials are: the
+      # fast-mcp bridge puts the whole header hash in here, `Authorization` included. It
+      # goes through the same redactor as the arguments — which recurses into nested
+      # hashes and already knows `authorization`, `token` and friends by name — so
+      # recording metadata does not turn the ledger into a place bearer tokens accumulate.
+      # nil stays nil rather than becoming `{}`: a call that carried no metadata should
+      # not be indistinguishable from one whose metadata was emptied.
+      def redact_metadata(attributes)
+        metadata = attributes[:metadata]
+        return nil if metadata.nil? || metadata.empty?
+
+        Redactor.for(attributes[:tool_name], config: config).call(metadata)
       end
 
       # FR-014: identifiers are capped, never silently dropped — the count stays true and

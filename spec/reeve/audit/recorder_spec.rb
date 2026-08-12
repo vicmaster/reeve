@@ -134,10 +134,27 @@ RSpec.describe Reeve::Audit::Recorder do
       expect(only_entry.rule).to eq(Reeve::Decision::TOOL_ERROR)
     end
 
-    it "leaves metadata alone — the core never populates it" do
+    it "leaves metadata null when the caller passed none" do
       invoke { [] }
 
       expect(only_entry.metadata).to be_nil
+    end
+
+    # The column, the recorder mapping and the contract check all existed; the context
+    # projection did not carry the value, so this was NULL on every call ever recorded.
+    it "records the transport metadata the caller passed" do
+      invoke(metadata: { headers: { "X-Request-Id" => "r1" } }) { [] }
+
+      expect(only_entry.metadata).to eq("headers" => { "X-Request-Id" => "r1" })
+    end
+
+    # Metadata is where the credentials are: the fast-mcp bridge puts the whole header
+    # hash in it. Recording it must not turn the ledger into a token store.
+    it "redacts sensitive names inside metadata, as it does for arguments" do
+      invoke(metadata: { headers: { "Authorization" => "Bearer sk-live-1", "Accept" => "*/*" } }) { [] }
+
+      expect(only_entry.metadata["headers"])
+        .to eq("Authorization" => Reeve::Audit::Redactor::MARKER, "Accept" => "*/*")
     end
   end
 
