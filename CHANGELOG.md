@@ -6,7 +6,24 @@ Versioning](https://semver.org), with one rule specific to what it does — see
 
 ## [Unreleased]
 
+### Added
+
+- README: **Wrapping your own JSON-RPC server** — the integration path for a Rails app
+  that already exposes `/mcp` from its own controller and tool registry. Covers mapping
+  JSON-RPC tool names to `Reeve.invoke`, passing request headers as `metadata`, resolving
+  the principal from `Current.user` or a bearer token while keeping the host's existing
+  authentication, adopting one tool at a time through `:allow_with_warning`, and pointing
+  the compliance checks at the host's own dispatcher. The recipe is executed by
+  `spec/reeve/integrations/custom_dispatcher_spec.rb` rather than only written down.
+  ([#5](https://github.com/vicmaster/reeve/issues/5))
+
 ### Fixed
+
+- `metadata` passed to `Reeve.invoke` is written to the ledger. The column, the recorder
+  mapping and the contract check all existed, but `Context#to_h` did not carry the value,
+  so `metadata` was NULL on every call ever recorded — including the header hash the
+  fast-mcp adapter collects. It is redacted on the way in, by the same redactor and the
+  same declared names as the arguments, so `Authorization` does not land in the ledger.
 
 - A Pundit policy that inherits its `Scope` from a base policy (`class LeadPolicy <
   LeadBasePolicy`) is now recognised. Policy detection looked only at the policy's own

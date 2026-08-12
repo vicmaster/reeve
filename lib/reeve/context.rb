@@ -56,6 +56,12 @@ module Reeve
 
     # The audit-facing projection. The recorder adds the outcome, rule and records;
     # everything here is known before the tool runs.
+    #
+    # `metadata` belongs here even though nothing in the envelope reads it: the ledger has
+    # a column for it, the recorder maps it, and the contract check requires it — but this
+    # method used to omit it, so the column was written NULL on every call ever made. The
+    # transport detail a reviewer most wants after an incident (which request, which
+    # headers, which client) was accepted at the front door and dropped before the write.
     def to_h
       {
         invocation_id: invocation_id,
@@ -65,7 +71,8 @@ module Reeve
         agent_name: agent_name,
         principal_type: principal_type,
         principal_id: principal_id,
-        arguments: arguments
+        arguments: arguments,
+        metadata: metadata
       }
     end
 

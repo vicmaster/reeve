@@ -187,5 +187,15 @@ RSpec.describe Reeve::Context do
         arguments: { query: "acme" }
       )
     end
+
+    # The ledger has a metadata column and the recorder maps it, but this projection used
+    # to omit it, so it was written NULL on every call.
+    it "carries the metadata the ledger has a column for" do
+      context = described_class.new(
+        tool_name: "invoice_search", metadata: { headers: { "X-Request-Id" => "r1" } }
+      )
+
+      expect(context.to_h[:metadata]).to eq(headers: { "X-Request-Id" => "r1" })
+    end
   end
 end

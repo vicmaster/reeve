@@ -219,6 +219,95 @@ Reeve.invoke(
 )
 ```
 
+## Wrapping your own JSON-RPC server
+
+Plenty of Rails apps expose `/mcp` from a controller they wrote themselves, with their own
+tool registry and their own bearer-token authentication. There is no adapter to install
+for that, and none is needed: `Reeve.invoke` is the adapter interface. An MCP integration
+is a function from a JSON-RPC request to one `Reeve.invoke` call.
+
+Keep the authentication you have. Reeve does not do connection auth (see [What you have
+not gained](#what-you-have-not-gained)) — the controller still decides whether the caller
+gets in the door, and Reeve decides what they may touch once inside.
+
+**Dispatch through the envelope.** Map the JSON-RPC tool name to the class, then call:
+
+```ruby
+# app/controllers/mcp_controller.rb
+def call_tool
+  tool = McpServer.registry.fetch(params.dig(:params, :name))
+
+  records = Reeve.invoke(
+    tool: tool,
+    arguments: params.dig(:params, :arguments).to_h.symbolize_keys,
+    agent: { id: request.headers["X-MCP-Client"] || "unknown" },
+    metadata: { headers: request.headers.to_h.slice(*AUDITED_HEADERS) }
+  )
+
+  render json: { jsonrpc: "2.0", id: params[:id], result: serialize(records) }
+rescue Reeve::DeniedError => e
+  render json: { jsonrpc: "2.0", id: params[:id],
+                 error: { code: -32_003, message: e.message } }
+end
+```
+
+Note what is *not* passed: `principal:`. Omit it and the resolver in your initializer runs,
+which is what you want when the controller has already set `Current.user` — one place
+decides who the principal is, and the ledger records the same answer the guard used.
+Passing `principal:` explicitly overrides the resolver for that call, which is useful in
+tests and in scripts.
+
+**`metadata:` is transport detail, and it is recorded.** It reaches the resolver as
+`context.metadata` and is written to the ledger's `metadata` column, so it is what a
+reviewer has to reconstruct *which request* a row came from. It goes through the same
+redactor as the arguments, so `Authorization` and friends are replaced by name — but pass
+the headers you would want in an audit rather than all of them.
+
+**Resolve the principal from whichever the controller established:**
+
+```ruby
+Reeve.configure do |config|
+  config.principal_resolver = lambda do |context|
+    Current.user || ApiToken.find_by(
+      token: context.metadata.dig(:headers, "Authorization").to_s.delete_prefix("Bearer ")
+    )&.user
+  end
+end
+```
+
+A resolver that returns nil — or raises — denies with `no_principal` and still writes a
+row. There is no configuration in which an unidentified caller reaches a tool.
+
+**Adopt one tool at a time.** A registry of thirty tools does not need thirty policies
+before any of this is worth turning on:
+
+```ruby
+config.unguarded_tools = :allow_with_warning   # migrating
+```
+
+Tools with `guard_with` are authorized and scoped normally. Tools without one still run —
+unscoped, which is the entire point of the warning — and are recorded with `guard: "none"`
+and rule `unguarded_tool`, so the ledger itself is your worklist:
+
+```ruby
+Reeve::Audit::Entry.where(guard: "none").distinct.pluck(:tool_name)
+```
+
+Flip to `:deny` when that comes back empty, and the mode stops being reachable by accident.
+
+The compliance checks work here too, and they take an `invoke:` argument precisely so they
+run against your dispatcher rather than a synthetic call:
+
+```ruby
+Reeve::Checks.run_all(
+  principals: [alice, bob],
+  invoke: ->(tool:, principal:, arguments:) { McpServer.dispatch(tool, principal, arguments) }
+)
+```
+
+That is the whole integration: one call site, your auth untouched, and the same three
+guarantees the fast-mcp adapter gets.
+
 Policies are plain objects unless you want Pundit (`authorize` and `scope`, two methods).
 The ledger is an ActiveRecord table unless you supply your own recorder. Records are
 ActiveRecord unless they are not — a plain object with an `id` works.
