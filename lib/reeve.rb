@@ -12,7 +12,8 @@ require_relative "reeve/authorization"
 # Reeve — per-record authorization and an append-only audit ledger for the MCP tools
 # a Rails application exposes to AI agents.
 #
-# The published 0.0.1 is a placeholder release reserving the gem name; the kernel below
-# is unreleased work in progress. See https://github.com/vicmaster/reeve.
+# A tool declares the policy that governs it with `guard_with`; every invocation is
+# authorized, scoped to what the principal may see, and recorded. See
+# https://github.com/vicmaster/reeve.
 module Reeve
 end

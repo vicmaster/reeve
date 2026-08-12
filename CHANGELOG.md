@@ -14,6 +14,12 @@ Versioning](https://semver.org), with one rule specific to what it does — see
   with `ConfigurationError`. Detection now walks the policy's ancestry, stopping before
   `Object` so a top-level `Scope` constant still cannot make an unrelated class look
   Pundit-shaped. ([#3](https://github.com/vicmaster/reeve/issues/3))
+- `lib/reeve.rb` no longer describes the kernel as unreleased work in progress. The note
+  belonged to the 0.0.1 name-claim release and contradicted 0.1.0 for anyone reading the
+  installed gem. ([#4](https://github.com/vicmaster/reeve/issues/4))
+- The README compliance specs read the file as UTF-8. Under a POSIX locale they read it
+  as US-ASCII and every example failed on the first em dash, so the guarantees they
+  exist to enforce were never actually checked.
 
 ## [0.1.0] - 2026-08-11
 
