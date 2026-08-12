@@ -4,7 +4,10 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.1.1] - 2026-08-12
+
+All four items came out of running 0.1.0 against a real Rails 8.1 application rather than
+against its own test suite. The Pundit fix is the one that blocks adoption.
 
 ### Added
 
@@ -24,7 +27,8 @@ Versioning](https://semver.org), with one rule specific to what it does — see
   so `metadata` was NULL on every call ever recorded — including the header hash the
   fast-mcp adapter collects. It is redacted on the way in, by the same redactor and the
   same declared names as the arguments, so `Authorization` does not land in the ledger.
-
+  The audit-entry contract version stays `1`: no column was added, removed or renamed —
+  a column the contract already defined stopped being written empty.
 - A Pundit policy that inherits its `Scope` from a base policy (`class LeadPolicy <
   LeadBasePolicy`) is now recognised. Policy detection looked only at the policy's own
   namespace, so the ordinary Pundit inheritance pattern was refused at declaration time
