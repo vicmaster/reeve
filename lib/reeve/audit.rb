@@ -43,16 +43,25 @@ module Reeve
   #   table. Immutability is enforced at the library level; the generated migration
   #   documents the `GRANT INSERT, SELECT` that enforces the rest where it can actually be
   #   enforced, and the gem makes no stronger claim than that.
-  # * No retention, rotation or archival in v1 — the table is host-owned and the host's
+  # * No retention, rotation or archival yet — the table is host-owned and the host's
   #   existing policies apply.
-  # * No cryptographic chaining or tamper-evidence in v1. If that lands it arrives as a
+  # * No cryptographic chaining or tamper-evidence yet. If that lands it arrives as a
   #   nullable column, which the audit-entry contract's versioning already permits.
+  #
+  # ("yet" rather than "in v1": the gem version and the audit-entry contract version are
+  # different numbers that move independently, and writing v1 for one of them read as the
+  # other.)
   module Audit
     # The version of the audit-entry shape, as documented in
     # specs/001-guardrails-core/contracts/audit-entry.md (FR-015). Adding a nullable
     # column is a MINOR change and leaves this alone; removing or renaming a column, or
     # changing what a value means, is MAJOR and bumps it.
-    CONTRACT_VERSION = 1
+    #
+    # 2 — `metadata` carries the transport detail the caller passed. Through version 1 it
+    # was written NULL on every row regardless of what was passed, so anything mapping
+    # version 1 rows could reasonably have read the column as "always empty". The shape
+    # did not change; what a value means did.
+    CONTRACT_VERSION = 2
 
     TABLE_NAME = "reeve_audit_entries"
 

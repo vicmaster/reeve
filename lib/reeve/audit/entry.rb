@@ -16,7 +16,9 @@ module Reeve
       DENY  = "deny"
       OUTCOMES = [ALLOW, DENY].freeze
 
-      REQUIRED = %i[invocation_id occurred_at agent_id tool_name outcome rule guard].freeze
+      REQUIRED = %i[
+        invocation_id occurred_at agent_id tool_name outcome rule guard contract_version
+      ].freeze
 
       validates(*REQUIRED, presence: true)
       validates :invocation_id, uniqueness: true
@@ -24,8 +26,12 @@ module Reeve
 
       before_destroy { throw :abort }
 
-      # The contract version this table's shape implements (FR-015). Exposed on the model
-      # so an export can stamp the rows it carries.
+      # The contract version this build of the gem writes (FR-015).
+      #
+      # Class-level, and deliberately not the same question as `entry.contract_version`:
+      # this is what the gem implements *now*, while the column on each row is the shape
+      # that row was actually written under. They differ for every row written before an
+      # upgrade, which is the whole reason the column exists.
       def self.contract_version
         CONTRACT_VERSION
       end

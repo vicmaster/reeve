@@ -37,9 +37,27 @@ RSpec.describe "envelope overhead" do
     (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000
   end
 
+  # Compares the *fastest* call on each side, from trials run alternately.
+  #
+  # This used to time fifty guarded calls in one window, fifty bare calls in another, and
+  # subtract the means. A single stall — one GC pause, one scheduler preemption — landing
+  # in the guarded window and not the bare one lands whole in that difference: 300ms over
+  # fifty runs is 6ms per call against a 5ms budget, from a machine hiccup rather than a
+  # regression. That is a spec that fails when the laptop is busy, which is a spec nobody
+  # trusts.
+  #
+  # Minimum fixes it because noise is one-directional: it only ever adds time, so a stall
+  # inflates some trials and leaves the fastest one honest. It costs no sensitivity, which
+  # is the point — a real regression (the envelope doing per-record work) is paid on every
+  # call, so it slows the fastest trial too and still fails here. Both properties were
+  # measured rather than assumed: injecting a one-off 300ms stall moved this from 6.65ms
+  # to 0.23ms, and adding 6ms of work to every call still failed, at 7.13ms.
+  #
+  # Interleaved rather than run in two blocks so a machine that gets busy partway through
+  # slows both sides rather than whichever happened to be under measurement.
   it "adds no more than 5 ms over running the query directly" do
     warmup = 5
-    runs = 50
+    trials = 30
 
     # Both sides materialize. The envelope hands back a lazy relation, so timing it
     # without .to_a would flatter it by measuring less work than the baseline does.
@@ -48,12 +66,19 @@ RSpec.describe "envelope overhead" do
       InvoicePolicy.scope(alice, Invoice.all).to_a
     end
 
-    guarded = elapsed_ms do
-      runs.times { Reeve.invoke(tool: MeasuredTool, principal: alice).to_a }
-    end / runs
-    bare = elapsed_ms { runs.times { InvoicePolicy.scope(alice, Invoice.all).to_a } } / runs
+    guarded = []
+    bare = []
+    trials.times do
+      guarded << elapsed_ms { Reeve.invoke(tool: MeasuredTool, principal: alice).to_a }
+      bare    << elapsed_ms { InvoicePolicy.scope(alice, Invoice.all).to_a }
+    end
 
-    expect(guarded - bare).to be < 5.0, "envelope added #{(guarded - bare).round(2)}ms per call"
+    overhead = guarded.min - bare.min
+
+    expect(overhead).to be < 5.0,
+                        "envelope added #{overhead.round(2)}ms per call (fastest of " \
+                        "#{trials}: guarded #{guarded.min.round(2)}ms, bare " \
+                        "#{bare.min.round(2)}ms)"
   end
 
   # The failure this guards against is the tempting one: authorizing each record

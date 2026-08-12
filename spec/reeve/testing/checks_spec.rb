@@ -201,21 +201,22 @@ RSpec.describe Reeve::Checks, :reeve_fixtures do
 
       expect(result).not_to be_passed
       expect(result.message).to eq(
-        "expected the ledger to implement audit-entry contract version 1, but " \
+        "expected the ledger to implement audit-entry contract version 2, but " \
         "reeve_audit_entries is missing: guard, metadata — run `rails g reeve:install` " \
         "and migrate"
       )
     end
 
+    # A host that pinned an older contract, or one whose ledger is a shape behind.
     it "fails when the ledger reports a different contract version" do
       result = described_class.new(
-        ledger: ReeveFixtures::FakeLedger.new(contract_version: 2)
+        ledger: ReeveFixtures::FakeLedger.new(contract_version: 1)
       ).call
 
       expect(result).not_to be_passed
       expect(result.message).to eq(
-        "expected the ledger to implement audit-entry contract version 1, but it reports " \
-        "version 2 — this reeve version cannot read that shape"
+        "expected the ledger to implement audit-entry contract version 2, but it reports " \
+        "version 1 — this reeve version cannot read that shape"
       )
     end
   end

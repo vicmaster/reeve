@@ -116,7 +116,10 @@ module ReeveFixtures
           record_count: attributes[:record_count] || 0,
           truncated: attributes[:truncated] ? true : false,
           derived: attributes[:derived] ? true : false,
-          guard: attributes[:guard] || "policy"
+          guard: attributes[:guard] || "policy",
+          # Required from contract 2. A host recorder writing to Reeve::Audit::Entry
+          # stamps the shape it writes, exactly as the gem's own recorder does.
+          contract_version: Reeve::Audit::CONTRACT_VERSION
         )
       )
     end
@@ -127,7 +130,9 @@ module ReeveFixtures
   class FakeLedger
     attr_reader :contract_version
 
-    def initialize(entries: [], available: true, contract_version: 1, columns: nil,
+    def initialize(entries: [], available: true,
+                   contract_version: Reeve::Testing::Checks::ContractVersion::EXPECTED_VERSION,
+                   columns: nil,
                    reason: "the audit ledger is not loaded")
       @entries = entries
       @available = available

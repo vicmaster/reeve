@@ -89,7 +89,11 @@ module Reeve
           derived: attributes[:derived] ? true : false,
           guard: blank?(attributes[:guard]) ? "policy" : attributes[:guard].to_s,
           duration_ms: attributes[:duration_ms],
-          metadata: redact_metadata(attributes)
+          metadata: redact_metadata(attributes),
+          # Stamped from the constant rather than from the caller: the row records the
+          # shape the gem that wrote it implements, which is not something an adapter or
+          # a host is in a position to assert.
+          contract_version: CONTRACT_VERSION
         )
       end
 

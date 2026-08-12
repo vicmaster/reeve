@@ -8,8 +8,13 @@ require_relative "support/ledger"
 RSpec.describe "the audit entry contract" do
   before { Ledger.prepare! }
 
+  # Explicitly UTF-8: `File.read` uses the default external encoding, which is US-ASCII
+  # under a POSIX locale, and these documents are full of em dashes. Without this the
+  # examples below die on `invalid byte sequence` instead of comparing anything — which
+  # is exactly what spec/readme_spec.rb was doing unnoticed until 0.1.1.
   def read_doc(relative)
-    File.read(File.expand_path("../../../specs/001-guardrails-core/#{relative}", __dir__))
+    File.read(File.expand_path("../../../specs/001-guardrails-core/#{relative}", __dir__),
+              encoding: "UTF-8")
   end
 
   it "records the version documented in contracts/audit-entry.md" do
@@ -19,8 +24,31 @@ RSpec.describe "the audit entry contract" do
     expect(Reeve::Audit::CONTRACT_VERSION).to eq(Integer(documented))
   end
 
-  it "exposes the version on the entry, so an exported row can name its own shape" do
+  it "exposes on the class the version this build of the gem writes" do
     expect(Reeve::Audit::Entry.contract_version).to eq(Reeve::Audit::CONTRACT_VERSION)
+  end
+
+  # The class method answers "what does this gem write?"; the column answers "what was
+  # this row written under?". They agree today and diverge for every row that outlives an
+  # upgrade, which is the only reason the column is worth its width.
+  it "stamps each row with the contract it was written under" do
+    entry = Reeve::Audit::Recorder.record(
+      invocation_id: SecureRandom.uuid, occurred_at: Time.now, agent_id: "a",
+      tool_name: "T", arguments: {}, outcome: "allow", rule: "R", guard: "policy"
+    )
+
+    expect(entry.contract_version).to eq(Reeve::Audit::CONTRACT_VERSION)
+  end
+
+  it "refuses a row that does not name its shape, so an unstamped row cannot exist" do
+    entry = Reeve::Audit::Entry.new(
+      invocation_id: SecureRandom.uuid, occurred_at: Time.now, agent_id: "a",
+      tool_name: "T", arguments: {}, outcome: "allow", rule: "R", guard: "policy",
+      record_ids: [], record_count: 0
+    )
+
+    expect(entry).not_to be_valid
+    expect(entry.errors[:contract_version]).to be_present
   end
 
   it "has every column data-model.md lists for the entity" do

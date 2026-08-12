@@ -20,7 +20,8 @@ RSpec.describe Reeve::Audit::Entry do
       rule: "InvoicePolicy::Scope",
       record_ids: %w[1 2],
       record_count: 2,
-      guard: "policy"
+      guard: "policy",
+      contract_version: Reeve::Audit::CONTRACT_VERSION
     }.merge(overrides)
   end
 

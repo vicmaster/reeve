@@ -40,7 +40,8 @@ RSpec.describe "the audit entries migration" do
     "derived"        => { type: :boolean,  null: false },
     "guard"          => { type: :string,   null: false },
     "duration_ms"    => { type: :integer,  null: true },
-    "metadata"       => { type: :json,     null: true }
+    "metadata"       => { type: :json,     null: true },
+    "contract_version" => { type: :integer, null: false }
   }.each do |name, expected|
     it "creates #{name} as #{expected[:type]}, null: #{expected[:null]}" do
       expect(column(name)).not_to be_nil, "#{name} is missing from the table"

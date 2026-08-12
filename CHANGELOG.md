@@ -4,7 +4,35 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.2.0] - 2026-08-12
+
+Everything here came out of running 0.1.0 against a real Rails 8.1 application rather than
+against its own test suite. The Pundit fix is the one that blocks adoption.
+
+**Audit-entry contract version: `1` → `2`.** Two changes, one bump.
+
+`metadata` was written NULL on every row through version 1 and now carries what the caller
+passed. Anything mapping version 1 rows could reasonably have read that column as always
+empty, and this project's own versioning rule calls a change in what a value means MAJOR —
+hence 0.2.0 rather than a patch.
+
+New non-null `contract_version` column, stamped on every row. Version 1 rows could not
+name their own shape, which is exactly what made the `metadata` change ambiguous to a
+reader: on a version 1 row a NULL `metadata` means "never recorded", on a version 2 row it
+means "the caller passed none". Stamping the row settles that at read time instead of
+requiring a reader to know when the writing gem was deployed, and it makes every future
+bump legible on the row. It also gives `Checks::ContractVersion` real teeth — a stale
+table now fails on the missing column even when a bump was purely semantic.
+
+**Upgrading from 0.1.0:**
+
+- Re-run `bin/rails generate reeve:install` and migrate, or add the column by hand:
+  `add_column :reeve_audit_entries, :contract_version, :integer, null: false, default: 1`
+  — `default: 1` is correct for existing rows, since that is the contract they were
+  written under. Drop the default afterwards if you prefer; the recorder always sets it.
+- A host pinning `Reeve::Checks::ContractVersion.new(expected: 1)` moves it to `2`.
+- **A custom `audit_recorder` that writes to `Reeve::Audit::Entry` must now set
+  `contract_version`.** The model rejects a row without it.
 
 ### Added
 
@@ -24,7 +52,24 @@ Versioning](https://semver.org), with one rule specific to what it does — see
   so `metadata` was NULL on every call ever recorded — including the header hash the
   fast-mcp adapter collects. It is redacted on the way in, by the same redactor and the
   same declared names as the arguments, so `Authorization` does not land in the ledger.
-
+  This is the change behind the contract-version bump above.
+- `contracts/audit-entry.md` no longer claims the contract version is "recorded in the
+  initializer". It never was — which is what prompted the `contract_version` column above,
+  so that from contract 2 the claim is simply true.
+- The envelope-overhead spec compares the fastest call on each side rather than the mean
+  of two separately-timed windows. A single GC pause or scheduler preemption landing in
+  one window and not the other lands whole in the difference — 300ms over fifty runs is
+  6ms per call against a 5ms budget, from a busy machine rather than a regression. It
+  loses no sensitivity: a regression is paid on every call, so it slows the fastest trial
+  too. Verified both ways — an injected one-off stall moves the measurement from 6.65ms to
+  0.23ms, and 6ms added to every call still fails at 7.13ms.
+- The spec suite declares UTF-8 (`spec/spec_helper.rb`). The README-spec encoding bug was
+  one instance of five: eleven examples across `readme_spec`, `contract_version_spec`,
+  `migration_spec`, `install_generator_spec`, `framework_neutrality_spec`,
+  `isolation_spec` and `verification_spec` died on `invalid byte sequence` whenever a file
+  was run on its own, and passed in a full run only because some other file happened to
+  set the encoding first. Every spec file now passes in isolation, and the suite passes
+  under `LC_ALL=C`.
 - A Pundit policy that inherits its `Scope` from a base policy (`class LeadPolicy <
   LeadBasePolicy`) is now recognised. Policy detection looked only at the policy's own
   namespace, so the ordinary Pundit inheritance pattern was refused at declaration time
