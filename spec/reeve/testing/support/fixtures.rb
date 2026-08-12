@@ -127,7 +127,9 @@ module ReeveFixtures
   class FakeLedger
     attr_reader :contract_version
 
-    def initialize(entries: [], available: true, contract_version: 1, columns: nil,
+    def initialize(entries: [], available: true,
+                   contract_version: Reeve::Testing::Checks::ContractVersion::EXPECTED_VERSION,
+                   columns: nil,
                    reason: "the audit ledger is not loaded")
       @entries = entries
       @available = available

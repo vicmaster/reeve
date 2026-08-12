@@ -7,7 +7,7 @@ A Ruby gem that makes it safe for a Rails application to expose MCP tools to AI 
 declarative per-record authorization, an append-only audit ledger, and a testing kit that
 proves both hold.
 
-> **Status: 0.1.1.** Read the known limitations in
+> **Status: 0.2.0.** Read the known limitations in
 > [CHANGELOG.md](CHANGELOG.md) before adopting it — particularly the one about a
 > transaction wrapped around an invocation, if your application wraps requests in one.
 

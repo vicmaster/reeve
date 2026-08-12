@@ -11,20 +11,38 @@ module Reeve
       # upgraded the gem and skipped the migration has a ledger one shape behind, and every
       # other check in this kit would go on passing while columns quietly went unwritten.
       #
+      # What each half of this check is worth, stated plainly because it is easy to read
+      # more into the version number than it carries:
+      #
+      # * The **column list** is the real test. It is compared against the columns the
+      #   host's table actually has, and it is written out by hand rather than read back
+      #   off the model — a check that derives its expectation from the thing it is
+      #   checking checks nothing.
+      # * The **version number** is compared against what the ledger model reports, which
+      #   is this gem's own +Audit::CONTRACT_VERSION+ — so by default it compares the gem
+      #   to itself and can only pass. Nothing in the host's database records which
+      #   contract version it was migrated for. It earns its keep when a host passes
+      #   `expected:` to pin the version it built its exports against, which turns a
+      #   silent shape change into a failing check.
+      #
+      # The constant below is written out rather than read from +Audit+ for the same
+      # reason the column list is, and one more: the testing kit loads with no ledger and
+      # no ActiveRecord at all (spec/reeve/testing/isolation_spec.rb), so it cannot
+      # reference the audit module. Bumping the contract means editing both by hand, and
+      # spec/reeve/audit/contract_version_spec.rb fails if they drift.
+      #
       #   Reeve::Checks::ContractVersion.new.call
+      #   Reeve::Checks::ContractVersion.new(expected: 2).call   # pinned by the host
       class ContractVersion < Base
         TABLE = "reeve_audit_entries"
 
-        # Contract version 1, as documented in contracts/audit-entry.md. This list is
-        # deliberately written out rather than read back off the model: a check that
-        # derives its expectation from the thing it is checking checks nothing.
         COLUMNS = %w[
           invocation_id occurred_at agent_id agent_name principal_type principal_id
           tool_name arguments outcome rule detail record_type record_ids record_count
           truncated derived guard duration_ms metadata
         ].freeze
 
-        EXPECTED_VERSION = 1
+        EXPECTED_VERSION = 2
 
         def initialize(tool: nil, expected: EXPECTED_VERSION, ledger: nil)
           super(tool: tool, ledger: ledger)

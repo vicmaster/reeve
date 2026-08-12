@@ -3,9 +3,24 @@
 **Stability**: public and **versioned** (FR-015). The entry shape is a compliance artifact;
 downstream exports and SIEM mappings depend on it.
 
-**Contract version**: `1`. Recorded in the initializer and asserted by the compliance suite.
-Adding a nullable column is a MINOR change. Removing a column, renaming one, or changing the
-meaning of a value is MAJOR.
+**Contract version**: `2`. Adding a nullable column is a MINOR change. Removing a column,
+renaming one, or changing the meaning of a value is MAJOR.
+
+Asserted by `Reeve::Checks::ContractVersion`, with one limit worth stating plainly: the
+host's database does not record which contract version it was migrated for, so that check
+compares the gem against itself unless the host passes `expected:` to pin the version its
+exports were built against. What it genuinely verifies against the host's table is the
+column list. Earlier revisions of this document claimed the version was "recorded in the
+initializer"; it never was.
+
+### History
+
+- **2** (2026-08-12) — `metadata` carries the transport detail the caller passed. Through
+  version 1 it was written NULL on every row whatever was passed, so anything mapping
+  version 1 rows could reasonably have read the column as always empty. No column was
+  added, removed or renamed; what a value means changed, which this document's own rule
+  makes MAJOR.
+- **1** — initial shape.
 
 ## Shape
 
@@ -28,6 +43,12 @@ column-level table. Contractual guarantees on top of it:
    it explicitly (FR-014). Identifiers are never silently dropped.
 6. **`occurred_at` is invocation time, not write time** — ordering reflects what happened.
 7. **No mutation API.** No public method updates or deletes an entry (FR-010).
+8. **`metadata` is the caller's transport detail, post-redaction.** Whatever the adapter
+   or the host passed as `metadata:` — headers, request ids, transport context — recorded
+   through the same redactor as the arguments, so a declared-sensitive name is replaced
+   wherever it appears, including nested. Nullable: a call that carried none records
+   `NULL` rather than `{}`, so "carried nothing" stays distinguishable from "carried
+   something that was emptied". Populated from contract version `2`.
 
 ## Query interface (FR-013)
 

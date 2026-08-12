@@ -4,10 +4,18 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [0.1.1] - 2026-08-12
+## [0.2.0] - 2026-08-12
 
-All four items came out of running 0.1.0 against a real Rails 8.1 application rather than
+Everything here came out of running 0.1.0 against a real Rails 8.1 application rather than
 against its own test suite. The Pundit fix is the one that blocks adoption.
+
+**Audit-entry contract version: `1` → `2`.** No column was added, removed or renamed, so
+no migration is required and no existing query breaks. What changed is what a value means:
+`metadata` was written NULL on every row through version 1, and now carries what the
+caller passed. Anything mapping version 1 rows could reasonably have read that column as
+always empty, and this project's own versioning rule calls that MAJOR — hence 0.2.0 rather
+than a patch. A host pinning the contract with
+`Reeve::Checks::ContractVersion.new(expected: 1)` should move it to `2`.
 
 ### Added
 
@@ -27,8 +35,19 @@ against its own test suite. The Pundit fix is the one that blocks adoption.
   so `metadata` was NULL on every call ever recorded — including the header hash the
   fast-mcp adapter collects. It is redacted on the way in, by the same redactor and the
   same declared names as the arguments, so `Authorization` does not land in the ledger.
-  The audit-entry contract version stays `1`: no column was added, removed or renamed —
-  a column the contract already defined stopped being written empty.
+  This is the change behind the contract-version bump above.
+- `contracts/audit-entry.md` no longer claims the contract version is "recorded in the
+  initializer". It never was, and nothing in a host's database records which version its
+  table was migrated for — so `Checks::ContractVersion` compares the gem against itself
+  unless the host passes `expected:`. The column list is the half of that check that
+  genuinely tests the host's table, and both halves are now documented for what they are.
+- The spec suite declares UTF-8 (`spec/spec_helper.rb`). The README-spec encoding bug was
+  one instance of five: eleven examples across `readme_spec`, `contract_version_spec`,
+  `migration_spec`, `install_generator_spec`, `framework_neutrality_spec`,
+  `isolation_spec` and `verification_spec` died on `invalid byte sequence` whenever a file
+  was run on its own, and passed in a full run only because some other file happened to
+  set the encoding first. Every spec file now passes in isolation, and the suite passes
+  under `LC_ALL=C`.
 - A Pundit policy that inherits its `Scope` from a base policy (`class LeadPolicy <
   LeadBasePolicy`) is now recognised. Policy detection looked only at the policy's own
   namespace, so the ordinary Pundit inheritance pattern was refused at declaration time
