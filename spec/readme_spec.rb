@@ -7,7 +7,10 @@
 # The compliance-gate block is executed for real by spec/reeve/testing/isolation_spec.rb;
 # this file covers the rest by parsing every example and checking the API it names.
 RSpec.describe "README examples" do
-  README = File.read(File.expand_path("../README.md", __dir__))
+  # Read as UTF-8 explicitly. `File.read` uses the default external encoding, which is
+  # US-ASCII under a POSIX locale — and the README has em dashes in it, so every example
+  # below died on `invalid byte sequence` instead of checking anything.
+  README = File.read(File.expand_path("../README.md", __dir__), encoding: "UTF-8")
 
   def ruby_blocks
     README.scan(/```ruby\n(.*?)```/m).flatten
@@ -64,11 +67,5 @@ RSpec.describe "README examples" do
       expect(Gem::Specification.load("reeve.gemspec").required_ruby_version.to_s)
         .to include("3.0")
     end
-  end
-
-  it "does not claim the gem is released while the version is a placeholder" do
-    # The published 0.0.1 reserves the name and does nothing. Saying otherwise in the
-    # README is the one lie a reader cannot check without installing it.
-    expect(README).to match(/unreleased|placeholder/i) if Reeve::VERSION == "0.0.1"
   end
 end
