@@ -36,3 +36,16 @@ else
   gem "railties"
   gem "sqlite3"
 end
+
+# The other two engines the gem claims to support (spec/support/optional/database.rb).
+# Installed only when asked for, because building either driver needs native client
+# libraries and the default `bundle install` should not require them:
+#
+#   DB=postgresql bundle install && DB=postgresql bundle exec rspec
+install_if -> { ENV["DB"] == "postgresql" } do
+  gem "pg"
+end
+
+install_if -> { ENV["DB"] == "mysql2" } do
+  gem "mysql2"
+end

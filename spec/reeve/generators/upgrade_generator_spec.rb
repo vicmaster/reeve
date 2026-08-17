@@ -113,13 +113,18 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
     end
 
     it "applies cleanly, stamping existing rows with the contract they were written under" do
-      connection.execute(<<~SQL)
-        INSERT INTO reeve_audit_entries
-          (invocation_id, occurred_at, agent_id, tool_name, arguments, outcome, rule,
-           record_ids, record_count, truncated, derived, guard)
-        VALUES ('old-row', '2026-01-01 00:00:00', 'a', 'T', '{}', 'allow', 'R',
-                '[]', 0, 0, 0, 'policy')
-      SQL
+      # Built through the connection's own quoting rather than as a SQL literal: `0` is a
+      # boolean on SQLite and MySQL and a type error on PostgreSQL, and this row exists to
+      # test the migration, not the spec author's SQL.
+      connection.insert_fixture(
+        {
+          "invocation_id" => "old-row", "occurred_at" => "2026-01-01 00:00:00",
+          "agent_id" => "a", "tool_name" => "T", "arguments" => "{}", "outcome" => "allow",
+          "rule" => "R", "record_ids" => "[]", "record_count" => 0,
+          "truncated" => false, "derived" => false, "guard" => "policy"
+        },
+        "reeve_audit_entries"
+      )
 
       run_upgrade
       load migrations.first

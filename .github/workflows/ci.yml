@@ -24,6 +24,61 @@ jobs:
           bundler-cache: true
       - run: bundle exec rspec
 
+  # The gem claims to work on every database ActiveRecord supports — the ledger stores
+  # `invocation_id` as a string rather than a native uuid precisely so that holds. Until
+  # this job existed the claim had only ever been run against SQLite, while the three
+  # engines disagree about exactly what this gem leans on: what `t.json` becomes, what a
+  # boolean literal is, what `change_column_default` does to a NOT NULL column, and how a
+  # savepoint behaves inside a transaction the caller opened.
+  database:
+    name: "specs (${{ matrix.db }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: ["postgresql", "mysql2"]
+    env:
+      DB: ${{ matrix.db }}
+      DB_NAME: reeve_test
+      DB_HOST: 127.0.0.1
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: reeve_test
+          POSTGRES_USER: reeve
+          POSTGRES_PASSWORD: reeve
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: reeve_test
+          MYSQL_ROOT_PASSWORD: reeve
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -preeve"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          # DB is set for the job, so bundler installs the driver `install_if` gates on.
+          bundler-cache: true
+      - name: Run the suite
+        env:
+          DB_USERNAME: ${{ matrix.db == 'postgresql' && 'reeve' || 'root' }}
+          DB_PASSWORD: reeve
+          DB_PORT: ${{ matrix.db == 'postgresql' && '5432' || '3306' }}
+        run: bundle exec rspec
+
   rubocop:
     name: rubocop
     runs-on: ubuntu-latest
