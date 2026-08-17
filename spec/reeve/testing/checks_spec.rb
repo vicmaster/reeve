@@ -202,7 +202,7 @@ RSpec.describe Reeve::Checks, :reeve_fixtures do
       expect(result).not_to be_passed
       expect(result.message).to eq(
         "expected the ledger to implement audit-entry contract version 2, but " \
-        "reeve_audit_entries is missing: guard, metadata — run `rails g reeve:install` " \
+        "reeve_audit_entries is missing: guard, metadata — run `rails g reeve:upgrade` " \
         "and migrate"
       )
     end

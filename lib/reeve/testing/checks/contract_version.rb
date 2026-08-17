@@ -79,10 +79,14 @@ module Reeve
           )
         end
 
+        # Names the generator that actually fixes this. It used to say `reeve:install`,
+        # which is wrong for the case this failure describes: the table exists, so Rails
+        # resolves that migration by name and either emits nothing or offers to overwrite
+        # one that has already run.
         def missing_columns(missing)
           failed(
             "expected the ledger to implement audit-entry contract version #{@expected}, " \
-            "but #{TABLE} is missing: #{missing.join(', ')} — run `rails g reeve:install` " \
+            "but #{TABLE} is missing: #{missing.join(', ')} — run `rails g reeve:upgrade` " \
             "and migrate",
             version: @expected, missing: missing
           )

@@ -39,6 +39,10 @@ module Reeve
             2. Run `bin/rails db:migrate` to create the audit ledger.
 
           Then add `guard_with SomePolicy` to a tool.
+
+          Upgrading an existing ledger later? Use `rails g reeve:upgrade`, not this
+          generator — Rails resolves a migration by name, so re-running install cannot
+          deliver a shape change to a table that already exists.
         NEXT
       end
     end
