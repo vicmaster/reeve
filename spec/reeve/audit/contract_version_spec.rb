@@ -11,7 +11,7 @@ RSpec.describe "the audit entry contract" do
   # Explicitly UTF-8: `File.read` uses the default external encoding, which is US-ASCII
   # under a POSIX locale, and these documents are full of em dashes. Without this the
   # examples below die on `invalid byte sequence` instead of comparing anything — which
-  # is exactly what spec/readme_spec.rb was doing unnoticed until 0.1.1.
+  # is exactly what spec/readme_spec.rb was doing unnoticed until 0.2.0.
   def read_doc(relative)
     File.read(File.expand_path("../../../specs/001-guardrails-core/#{relative}", __dir__),
               encoding: "UTF-8")
