@@ -136,6 +136,20 @@ A call whose tool raised is still recorded — that trace is the one most worth 
 call that cannot be recorded fails, unless the host has explicitly opted into
 `audit_failure_mode = :warn`.
 
+If your application wraps invocations in a transaction — a controller that opens one per
+request, a job runner — a rollback takes the ledger row with it, and exactly the calls
+worth auditing are the ones that rolled back. Write on a connection the rollback cannot
+reach:
+
+```ruby
+config.audit_recorder = Reeve::Audit::IsolatedRecorder
+```
+
+It needs a database with concurrent writers and refuses on SQLite, where an open
+transaction holds the write lock; `IsolatedRecorder.available?` lets you branch if you
+develop on one and deploy on the other. The default recorder warns when it detects the
+case rather than failing silently.
+
 ## Provable in CI, in whichever framework you already use
 
 All the logic lives in framework-neutral checks. RSpec and Minitest are thin front-ends

@@ -53,6 +53,25 @@ Reeve.configure do |config|
   #            guarantee for availability.
   config.audit_failure_mode = :fail
 
+  # ---------------------------------------------------------------------------
+  # Does your application wrap the invocation in a transaction?
+  #
+  # A controller that opens one per request, a job runner, a test suite with
+  # transactional fixtures — if that transaction rolls back, it takes the ledger
+  # row with it, and the default recorder can only warn about it.
+  #
+  #   config.audit_recorder = Reeve::Audit::IsolatedRecorder
+  #
+  # writes on a connection of its own, which a rollback on yours cannot reach.
+  # It needs a database with concurrent writers and refuses to run on SQLite, so
+  # a host that develops on SQLite and deploys on PostgreSQL branches:
+  #
+  #   config.audit_recorder =
+  #     Reeve::Audit::IsolatedRecorder.available? ? Reeve::Audit::IsolatedRecorder
+  #                                              : Reeve::Audit::Recorder
+  #
+  # Left unset, which resolves to Reeve::Audit::Recorder.
+
   # Cap on how many record identifiers one entry stores. The true count is
   # always recorded, and the entry says when the list was truncated.
   config.max_recorded_ids = 1000

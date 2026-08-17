@@ -8,6 +8,28 @@ Versioning](https://semver.org), with one rule specific to what it does — see
 
 ### Added
 
+- **`Reeve::Audit::IsolatedRecorder`** — the ledger row on a connection of its own, which
+  closes the R5 limitation the first release documented rather than fixed. The default
+  recorder writes in a savepoint: the trace survives a rollback by the *tool*, but a
+  transaction the *host* wrapped around the whole invocation takes the row with it, and
+  the calls most worth auditing are exactly the ones that rolled back. A transaction on
+  one connection cannot roll back an INSERT committed on another.
+
+  ```ruby
+  config.audit_recorder = Reeve::Audit::IsolatedRecorder
+  ```
+
+  Opt-in rather than the default, because it cannot work everywhere the default does: on
+  SQLite an open transaction holds the database write lock, so a second connection would
+  block until it timed out and fail every guarded call. It raises `ConfigurationError`
+  there rather than degrading quietly, and `IsolatedRecorder.available?` answers the
+  question in an initializer for a host that develops on SQLite and deploys on PostgreSQL.
+  The default recorder's warning now names it.
+
+  Worth deciding knowingly: this also keeps the row when the host rolls back an
+  invocation it meant to undo entirely. A ledger of what was *attempted* is the intended
+  reading of Constitution II, but it is a choice.
+
 - **CI runs the suite on PostgreSQL and MySQL as well as SQLite.** The gem claims to work
   on every database ActiveRecord supports — the ledger stores `invocation_id` as a string
   rather than a native `uuid` precisely so that holds — and until now that claim had only

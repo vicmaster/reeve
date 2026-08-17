@@ -26,10 +26,14 @@ module Reeve
     # A genuinely independent write needs a second connection, and that is not portable:
     # on SQLite the enclosing transaction holds the write lock, so a second connection
     # blocks until it times out. Rather than fail every call on the databases where
-    # isolation is impossible, the recorder detects the enclosing transaction and warns
-    # that the guarantee is suspended for that call. A host that needs durability under a
-    # wrapping transaction supplies its own `audit_recorder` — writing to a separate
-    # connection, a queue, or an append-only log — which is what that setting is for.
+    # isolation is impossible, this recorder detects the enclosing transaction and warns
+    # that the guarantee is suspended for that call.
+    #
+    # `Reeve::Audit::IsolatedRecorder` is the answer where the database has concurrent
+    # writers: same rows, same redaction, on a pool of its own, so a rollback on the
+    # host's connection cannot reach it. It is opt-in rather than the default precisely
+    # because it cannot work everywhere this one does. A host with a different answer
+    # again — a queue, an append-only log — still supplies its own `audit_recorder`.
     #
     # The other known limit, unchanged: on a single connection there is a narrow window
     # where the tool's data commits and the ledger write then fails. The caller learns by
@@ -161,8 +165,9 @@ module Reeve
 
         message = "reeve: invocation #{invocation_id} was recorded inside a transaction " \
                   "the host opened around it, so the ledger row will be rolled back with " \
-                  "it. Configure Reeve.config.audit_recorder with a recorder that writes " \
-                  "outside this transaction if the trace must survive."
+                  "it. Set Reeve.config.audit_recorder = Reeve::Audit::IsolatedRecorder " \
+                  "to write on a connection the transaction cannot reach (needs a " \
+                  "database with concurrent writers; not SQLite)."
         logger = config.logger
         logger ? logger.warn(message) : Kernel.warn(message)
       end

@@ -92,6 +92,7 @@ end
 require_relative "audit/redactor"
 require_relative "audit/entry"
 require_relative "audit/recorder"
+require_relative "audit/isolated_recorder"
 require_relative "audit/query"
 
 Reeve::Audit.install!

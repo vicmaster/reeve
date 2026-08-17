@@ -55,6 +55,14 @@ end
 - Unknown setting names raise `NoMethodError` at configure time, not silently no-op.
 - Every setting is readable at runtime (`config.unguarded_tools`) for the compliance suite
   to assert against.
+- `audit_recorder` has two built-in values. `Reeve::Audit::Recorder` (the default) writes
+  in a savepoint on the host's connection: the trace survives a rollback by the *tool*,
+  and it warns when it detects a transaction the *host* wrapped around the invocation,
+  which it cannot survive. `Reeve::Audit::IsolatedRecorder` writes the same rows on a
+  connection of its own, which no rollback on the host's connection can reach; it requires
+  a database with concurrent writers and raises `ConfigurationError` on SQLite, where an
+  open transaction holds the write lock. `IsolatedRecorder.available?` answers whether it
+  can be used here, so a host can branch in an initializer.
 - A custom `audit_recorder` receives the same attributes the built-in one does and owns
   what it writes. If it writes to `Reeve::Audit::Entry`, it must set `contract_version`
   from `Reeve::Audit::CONTRACT_VERSION` — the model rejects a row that does not name its
