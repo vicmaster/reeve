@@ -4,7 +4,21 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.3.0] - 2026-08-17
+
+Three of the limitations 0.1.0 shipped knowingly are now closed, and the audit-entry
+contract is unchanged — **no migration is required to take this release**.
+
+Two of the "Known limitations" under 0.1.0 below no longer hold, and are left in place
+because that section records what was true of that release:
+
+- *"A transaction the host wraps around an invocation takes the ledger row with it"* —
+  `IsolatedRecorder` closes it where the database has concurrent writers.
+- *"CI runs SQLite only"* — the suite now runs on PostgreSQL and MySQL too.
+
+Still open from that list: an unscoped fetch by id disclosing existence, a scope-less type
+needing to be tied to its policy, `AuditCoverage` proving one invocation rather than every
+one, and the fast-mcp adapter needing Ruby 3.1+.
 
 ### Added
 
