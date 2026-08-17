@@ -14,6 +14,37 @@ column list catches a stale table even when the bump was purely semantic. A host
 Earlier revisions of this document claimed the version was "recorded in the initializer".
 It never was; from contract 2 it is recorded on every row.
 
+### Changes to the table must be additive
+
+**A bump may add columns. It may not remove one, rename one, or narrow one — and a new
+column must be nullable, or carry a default that is *true of the rows already written*.**
+
+This is a consequence of what the table is, not a convenience. The ledger is append-only:
+there is no honest value to backfill into a historical row, because nobody was there to
+observe it. `contract_version` is the worked example — it defaults to `1` on an upgrade
+because every row already in the table really was written under contract 1, and the
+default is dropped afterwards so new rows must state their own.
+
+Two things depend on this rule:
+
+- `bin/rails generate reeve:upgrade` decides what to emit by asking the table which
+  columns it has. A step that changes a column without adding one is invisible to that
+  test and would need its own predicate.
+- An upgraded ledger and a fresh install must reach the same shape, which is asserted by
+  `spec/reeve/generators/upgrade_generator_spec.rb`. A destructive step makes the two
+  paths diverge permanently, since the fresh one never had the column to destroy.
+
+A change that genuinely cannot be expressed additively is a new table, not a new version
+of this one.
+
+### Migrating an existing ledger
+
+`bin/rails generate reeve:upgrade && bin/rails db:migrate`. It emits only the steps the
+host's table is missing and is a no-op on a current one. **Do not re-run `reeve:install`
+to pick up a shape change**: Rails resolves a migration by name, so it emits nothing, or
+offers to overwrite a migration that has already run — which does not touch the database
+and destroys the record of what was applied.
+
 ### History
 
 - **2** (2026-08-12) — Two changes, one bump.

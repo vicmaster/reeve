@@ -4,6 +4,29 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
+## [Unreleased]
+
+### Added
+
+- **`bin/rails generate reeve:upgrade`** — brings an existing ledger up to the current
+  audit-entry contract. It asks the table which columns it has and emits only the steps
+  that are missing, so it is a no-op on a current ledger and safe to run twice before
+  migrating. Replaces the hand-written `add_column` the 0.2.0 notes had to give.
+  ([#11](https://github.com/vicmaster/reeve/issues/11))
+- `contracts/audit-entry.md` states the rule the upgrade path depends on: **changes to the
+  table must be additive**, and a new column must be nullable or carry a default that is
+  true of the rows already written. An append-only ledger has no honest value to backfill
+  into a historical row. A change that cannot be expressed additively is a new table, not
+  a new version of this one.
+
+### Fixed
+
+- `Checks::ContractVersion` names `reeve:upgrade` when the table is missing a column. It
+  said `reeve:install`, which is wrong for exactly the case it fires in: the table exists,
+  so Rails resolves that migration by name and either emits nothing or offers to overwrite
+  one that has already run — which does not touch the database and destroys the record of
+  what was applied. The install generator now says the same thing on its way out.
+
 ## [0.2.0] - 2026-08-12
 
 Everything here came out of running 0.1.0 against a real Rails 8.1 application rather than
