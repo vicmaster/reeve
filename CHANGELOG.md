@@ -8,6 +8,22 @@ Versioning](https://semver.org), with one rule specific to what it does — see
 
 ### Added
 
+- **CI runs the suite on PostgreSQL and MySQL as well as SQLite.** The gem claims to work
+  on every database ActiveRecord supports — the ledger stores `invocation_id` as a string
+  rather than a native `uuid` precisely so that holds — and until now that claim had only
+  ever been executed against SQLite. The three engines disagree about exactly what this
+  gem leans on: what `t.json` becomes, what a boolean literal is, what
+  `change_column_default` does to a NOT NULL column, and how a savepoint behaves inside a
+  transaction the caller opened. Select an engine with `DB=postgresql` or `DB=mysql2`
+  (`DB=postgresql bundle install` first — the drivers are `install_if`-gated so the
+  default install needs no native client libraries).
+
+  All 545 examples pass on all three. The one portability defect it found was in the
+  `reeve:upgrade` spec rather than the library: a fixture row inserted `0` into boolean
+  columns, which is a boolean on SQLite and MySQL and a type error on PostgreSQL. The
+  `change_column_default` the upgrade migration depends on behaves identically on all
+  three, which was the specific thing worth knowing after shipping it against SQLite only.
+
 - **`bin/rails generate reeve:upgrade`** — brings an existing ledger up to the current
   audit-entry contract. It asks the table which columns it has and emits only the steps
   that are missing, so it is a no-op on a current ledger and safe to run twice before
