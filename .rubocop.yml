@@ -42,10 +42,17 @@ Lint/ConstantDefinitionInBlock:
 # The envelope is one method precisely because there must be only one path through it;
 # splitting it to satisfy a metric would defeat the point. The scoper is one class for the
 # same reason: it is the single dispatch over what a tool can return.
+#
+# Configuration is the third: its length is the number of settings times a reader, a
+# validating writer and the comment explaining the choice. That list *is* the public
+# contract (contracts/configuration.md), so the only way to shorten the class is to split
+# the contract across two objects a host would then have to know about, or to drop the
+# validation that makes a wrong value fail at assignment rather than at first invocation.
 Metrics/ClassLength:
   Exclude:
     - "lib/reeve/invocation.rb"
     - "lib/reeve/authorization/scoper.rb"
+    - "lib/reeve/configuration.rb"
 
 # Dispatching on the shape of a tool's return value is inherently branchy; the branches
 # are the contract's return-value table, one for one.

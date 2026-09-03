@@ -124,8 +124,20 @@ end
 # --- Step 5: prove it in CI ------------------------------------------------------------
 require "reeve/testing"
 
-step("the compliance suite runs from plain Ruby and passes") do
+# The suite walks every tool that included the DSL, not only the ones that declared a
+# guard — otherwise it would report all-green on this very app, which exposes
+# LegacyExportTool without a guard on purpose. A compliance run that only inspects the
+# tools already known to be safe answers a question nobody asked.
+step("the compliance suite finds the tool this app forgot to guard") do
   report = Reeve::Checks.run_all(principals: [alice, bob])
+
+  report.failed? &&
+    report.failures.any? { |result| result.message.include?("LegacyExportTool") }
+end
+
+step("and passes once that tool is the only thing excluded") do
+  guarded = Reeve.registry.tool_classes - [LegacyExportTool]
+  report = Reeve::Checks.run_all(principals: [alice, bob], tools: guarded)
   puts report unless report.passed?
   report.passed?
 end

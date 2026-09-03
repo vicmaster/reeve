@@ -63,6 +63,11 @@ end
   a database with concurrent writers and raises `ConfigurationError` on SQLite, where an
   open transaction holds the write lock. `IsolatedRecorder.available?` answers whether it
   can be used here, so a host can branch in an initializer.
+- `compliance_tools` is what the testing kit certifies. Unset means every tool that
+  included `Reeve::Guard` — guarded or not, which is what makes a forgotten `guard_with`
+  visible rather than merely absent. Set it to an Array or a callable to narrow the run to
+  what a retrofit has certified so far. It bounds nothing at runtime; the envelope still
+  denies every unguarded call per `unguarded_tools`.
 - A custom `audit_recorder` receives the same attributes the built-in one does and owns
   what it writes. If it writes to `Reeve::Audit::Entry`, it must set `contract_version`
   from `Reeve::Audit::CONTRACT_VERSION` — the model rejects a row that does not name its

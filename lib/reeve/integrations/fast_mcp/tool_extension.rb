@@ -37,7 +37,11 @@ module Reeve
       # Idempotent: requiring "reeve/fast_mcp" twice must not stack two envelopes around
       # the same call.
       def install!(tool_base = ::FastMcp::Tool)
-        tool_base.include(Reeve::Guard) unless tool_base.include?(Reeve::Guard)
+        unless tool_base.include?(Reeve::Guard)
+          tool_base.include(Reeve::Guard)
+          # FastMcp::Tool carries the DSL for its subclasses; it is not itself a tool.
+          tool_base.reeve_abstract!
+        end
 
         unless tool_base.singleton_class.include?(Inheritance)
           tool_base.singleton_class.prepend(Inheritance)

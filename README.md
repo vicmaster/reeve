@@ -227,7 +227,29 @@ abort report.to_s unless report.passed?
 ```
 
 `alice` and `bob` are two fixture principals with disjoint records — that disjointness is
-what makes a shared record identifier proof of a leak. As a Rails rake task:
+what makes a shared record identifier proof of a leak.
+
+**The suite walks every tool that included `Reeve::Guard`, not only the ones that declared
+a guard.** A tool that forgot `guard_with` is the one worth finding, and it is absent from
+the guard registry by definition — so a run that only inspected guarded tools reported
+all-green on precisely the application that had a problem.
+
+Mid-retrofit that means a red build, which is honest but unreadable if it stays red for
+weeks. Say what you have certified so far, and grow the list:
+
+```ruby
+config.compliance_tools = -> { [SearchLeadsTool, GetLeadTool] }
+```
+
+Reeve can only see tools that reached it. If your MCP server dispatches tools Reeve has
+never been told about — a custom controller with its own registry — hand it the real
+inventory, or it will certify the subset it happens to know:
+
+```ruby
+Reeve::Checks.run_all(principals: [alice, bob], tools: McpToolRegistry.tool_classes)
+```
+
+As a Rails rake task:
 
 ```ruby
 # lib/tasks/reeve.rake

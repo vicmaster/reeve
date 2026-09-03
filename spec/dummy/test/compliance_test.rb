@@ -35,6 +35,10 @@ Invoice.create!(number: "AC-2", user_id: BOB.id, cents: 2500)
 Reeve.configure do |config|
   config.principal_resolver = ->(context) { User.find_by(id: context.metadata[:user_id]) }
   config.compliance_principals = -> { [ALICE, BOB] }
+  # This app ships LegacyExportTool deliberately unguarded, to show what a retrofit looks
+  # like before it is guarded. The suite now reports unguarded tools, so the app says
+  # which ones it is certifying rather than letting one demo tool redden every check.
+  config.compliance_tools = -> { Reeve.registry.tool_classes - [LegacyExportTool] }
 end
 require "reeve/audit"
 require_relative "../app/tools"

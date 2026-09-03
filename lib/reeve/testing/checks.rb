@@ -55,7 +55,7 @@ module Reeve
       def self.run(check, principals:, tools: nil, arguments: {}, invoke: nil, ledger: nil)
         return Report.new([check.new(ledger: ledger).call]) if GLOBAL.include?(check)
 
-        subjects = tools || Reeve.registry.map(&:tool_class)
+        subjects = tools || Testing.compliance_tools
         Report.new(
           subjects.map do |tool|
             build(check, tool: tool, principals: principals, arguments: arguments,
