@@ -7,7 +7,15 @@ gemspec
 # All development-only. Reeve has no runtime dependencies by design: everything below is
 # detected at load time and never required by the core.
 gem "rake"
-gem "rubocop"
+
+# Pinned to a minor range, unlike everything else here. `.rubocop.yml` sets
+# `NewCops: enable` and Gemfile.lock is deliberately not committed, so CI resolved the
+# newest RuboCop on every run — and a release that adds a cop turned the build red on a
+# file nobody had touched. A linter that can fail a build without a code change is not
+# reproducible; upgrading it should be a commit, not a Tuesday. The floor is 1.90 because
+# that is where `rubocop:disable-next` arrives, which spec/reeve/audit/migration_spec.rb
+# now uses.
+gem "rubocop", "~> 1.90"
 
 # Both testing frameworks, because the testing kit must be provable from either one
 # (Constitution III).

@@ -21,7 +21,7 @@ RSpec.describe "the audit entries migration" do
     expect(Reeve::Audit::Entry.table_name).to eq("reeve_audit_entries")
   end
 
-  # rubocop:disable Layout/HashAlignment
+  # rubocop:disable-next Layout/HashAlignment
   {
     "invocation_id"  => { type: :string,   null: false },
     "occurred_at"    => { type: :datetime, null: false },
@@ -49,7 +49,6 @@ RSpec.describe "the audit entries migration" do
       expect(column(name).null).to be(expected[:null])
     end
   end
-  # rubocop:enable Layout/HashAlignment
 
   it "defaults the flag columns so an insert never has to spell them out" do
     expect(column("truncated").default).to eq("0").or eq(false)

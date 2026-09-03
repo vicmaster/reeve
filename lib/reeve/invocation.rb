@@ -152,11 +152,49 @@ module Reeve
       Decision.deny(rule: Decision::POLICY_ERROR, detail: "policy raised #{e.class}: #{e.message}")
     end
 
+    # A denial has to mean nothing happened.
+    #
+    # Authorization runs before the tool, but with the *class* as its subject — for an
+    # index-style check there is no record yet. The per-record answer only exists once the
+    # tool has returned something to scope. So a write tool used to mutate the record and
+    # then be refused its response: the caller saw `out_of_scope_record`, the ledger
+    # recorded a denial, and the row in the host's database had already changed. A denial
+    # in a compliance artifact that follows a committed write is not a partial guarantee,
+    # it is a false statement.
+    #
+    # Running the tool inside a transaction closes that. `requires_new` matters: under a
+    # transaction the host opened around the invocation this is a savepoint, so rolling
+    # back takes the tool's work and leaves the host's alone.
+    #
+    # What it cannot undo is anything that was never in the transaction — a sent email, a
+    # webhook, a file. A tool that reaches outside the database before it knows whether it
+    # is allowed to must ask first; `authorize!` in the tool body is for exactly that.
     def run_guarded(guard, decision, &tool)
+      return run_and_narrow(guard, decision, &tool) unless rollback_available?
+
+      ::ActiveRecord::Base.transaction(requires_new: true) do
+        outcome = run_and_narrow(guard, decision, &tool)
+        raise ::ActiveRecord::Rollback if @scope_result.denied?
+
+        outcome
+      end || @scope_result.decision
+    end
+
+    def run_and_narrow(guard, decision, &tool)
       result = execute(&tool)
 
       @scope_result = narrow(guard, result)
       @scope_result.denied? ? @scope_result.decision : decision
+    end
+
+    # The core runs with no ActiveRecord at all (SC-008), and a host may have the library
+    # loaded without a connection. Neither can roll anything back, and neither should be
+    # made to fail here — they get the behaviour they had before, which the ledger still
+    # records truthfully because it records what the scoper decided either way.
+    def rollback_available?
+      defined?(::ActiveRecord::Base) && ::ActiveRecord::Base.connected?
+    rescue StandardError
+      false
     end
 
     # The degraded mode a host opts into while retrofitting guards onto existing tools
@@ -171,6 +209,14 @@ module Reeve
 
     def execute(&tool)
       tool.call
+    rescue DeniedError => e
+      # A denial the tool raised on itself through `authorize!`. It is an authorization
+      # outcome, not a crash, and recording it as `tool_error` would file a policy saying
+      # no under the same rule as a NoMethodError. The rule the policy gave is carried
+      # through to the ledger unchanged.
+      @decision = Decision.deny(rule: e.rule, detail: e.detail)
+      @scope_result = ScopeResult.deny(rule: e.rule, detail: e.detail)
+      raise
     rescue StandardError => e
       # The tool's own failure propagates untouched, but not before the ensure block
       # records it: the invocations most worth having a trace of are the ones that broke.

@@ -93,5 +93,38 @@ module Reeve
 
       Authorization::Scoper.scoped_relation(state, model_or_relation)
     end
+
+    # Asks the declared policy about one record, before the tool acts on it. Returns the
+    # record so it reads inline; raises +DeniedError+ if the policy says no.
+    #
+    #   def call(id:, to:)
+    #     lead = authorize!(Lead.find(id))
+    #     Mailer.introduction(lead, to).deliver_now
+    #     lead
+    #   end
+    #
+    # The envelope authorizes before the tool runs and scopes what it returns, and between
+    # those two points a tool can do things neither of them can reach. A rolled-back write
+    # leaves no trace; a sent email does. `scoped(...)` is the answer when a tool can work
+    # from a relation; this is the answer when it cannot — when the tool holds one record
+    # and is about to do something to the world with it.
+    #
+    # The denial carries the policy's own rule, so the ledger names what refused rather
+    # than reporting the tool as broken. It names no record: an out-of-scope record and a
+    # record that does not exist have to be indistinguishable (FR-006), and a tool that
+    # reached this line has already fetched the record it must not talk about.
+    def authorize!(record)
+      state = Authorization::Current.state
+      raise Error, "authorize!(...) may only be called inside a guarded invocation" if state.nil?
+
+      decision = state.adapter.authorize(
+        principal: state.context.principal, policy: state.declaration.policy,
+        action: state.declaration.action, record: record
+      )
+      return record if decision.allowed?
+
+      raise DeniedError.from(decision, tool_name: state.context.tool_name,
+                                       principal_id: state.context.principal_id)
+    end
   end
 end

@@ -119,6 +119,42 @@ end
 Reaching for `Invoice.sum(:cents)` there is denied with `unscoped_derived_result`. The
 guarantee is structural, not a matter of remembering.
 
+## Tools that write
+
+A denial means nothing happened. Authorization runs before the tool, but with the model
+class as its subject — for an index-style check there is no record yet — so the per-record
+answer only arrives once the tool has returned something to scope. A write tool sits
+between those two points:
+
+```ruby
+def call(id:, number:)
+  invoice = Invoice.find(id)        # unscoped fetch
+  invoice.update!(number: number)   # ...then a write
+  invoice
+end
+```
+
+The tool body runs in a transaction, and a scope denial rolls it back. Someone else's
+record is refused *and* unchanged, and the ledger's `deny` is a true statement about the
+database. A transaction the host opened around the invocation is untouched — the rollback
+reaches the tool's work and stops there.
+
+What a rollback cannot reach is anything that was never in the transaction. A tool that
+sends an email, calls a webhook or writes a file before it knows whether it is allowed to
+must ask first:
+
+```ruby
+def call(id:, to:)
+  lead = authorize!(Lead.find(id))     # raises DeniedError if the policy says no
+  LeadMailer.introduction(lead, to).deliver_now
+  lead
+end
+```
+
+`authorize!` asks the declared policy about one record and returns it, so it reads inline.
+The denial carries the policy's own rule into the ledger, and names no record — a refusal
+and a record that does not exist have to read the same.
+
 ## Every call leaves a trace
 
 One append-only row per invocation, allowed or denied, naming the agent, the principal, the
