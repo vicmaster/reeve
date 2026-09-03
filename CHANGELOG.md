@@ -6,10 +6,10 @@ Versioning](https://semver.org), with one rule specific to what it does — see
 
 ## [0.4.0] - 2026-09-03
 
-Everything here came out of a second application integrating the gem — a Rails CRM that
-put three of its twenty MCP tools behind reeve and was about to guard the write tools
-next. Two defects surfaced from reviewing that work, and both were failures of the same
-kind: the gem reporting a guarantee it had not actually established.
+Everything here came out of a second application integrating the gem — one that had put a
+handful of its MCP tools behind reeve and was about to guard its write tools next. Two
+defects surfaced from reviewing that work, and both were failures of the same kind: the
+gem reporting a guarantee it had not actually established.
 
 **The audit-entry contract is unchanged at `2`, so no migration is required.**
 

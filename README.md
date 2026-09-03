@@ -145,9 +145,9 @@ must ask first:
 
 ```ruby
 def call(id:, to:)
-  lead = authorize!(Lead.find(id))     # raises DeniedError if the policy says no
-  LeadMailer.introduction(lead, to).deliver_now
-  lead
+  invoice = authorize!(Invoice.find(id))   # raises DeniedError if the policy says no
+  InvoiceMailer.reminder(invoice, to).deliver_now
+  invoice
 end
 ```
 
@@ -238,7 +238,7 @@ Mid-retrofit that means a red build, which is honest but unreadable if it stays 
 weeks. Say what you have certified so far, and grow the list:
 
 ```ruby
-config.compliance_tools = -> { [SearchLeadsTool, GetLeadTool] }
+config.compliance_tools = -> { [InvoiceSearchTool, InvoiceShowTool] }
 ```
 
 Reeve can only see tools that reached it. If your MCP server dispatches tools Reeve has

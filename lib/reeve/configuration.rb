@@ -56,7 +56,7 @@ module Reeve
     # are the ones I have certified", which is a claim that can go green and then stay
     # green as the list grows.
     #
-    #   config.compliance_tools = -> { [SearchLeadsTool, GetLeadTool] }
+    #   config.compliance_tools = -> { [InvoiceSearchTool, InvoiceShowTool] }
     def compliance_tools=(tools)
       unless tools.nil? || tools.respond_to?(:call) || tools.is_a?(Array)
         raise ArgumentError,
