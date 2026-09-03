@@ -118,9 +118,9 @@ module Reeve
     # record so it reads inline; raises +DeniedError+ if the policy says no.
     #
     #   def call(id:, to:)
-    #     lead = authorize!(Lead.find(id))
-    #     Mailer.introduction(lead, to).deliver_now
-    #     lead
+    #     invoice = authorize!(Invoice.find(id))
+    #     InvoiceMailer.reminder(invoice, to).deliver_now
+    #     invoice
     #   end
     #
     # The envelope authorizes before the tool runs and scopes what it returns, and between

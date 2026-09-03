@@ -4,7 +4,23 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.4.0] - 2026-09-03
+
+Everything here came out of a second application integrating the gem — one that had put a
+handful of its MCP tools behind reeve and was about to guard its write tools next. Two
+defects surfaced from reviewing that work, and both were failures of the same kind: the
+gem reporting a guarantee it had not actually established.
+
+**The audit-entry contract is unchanged at `2`, so no migration is required.**
+
+Behaviour changes worth reading before upgrading:
+
+- A denied invocation now rolls the tool's work back. A guarded tool that writes and is
+  then refused used to leave the write behind.
+- A guarded tool that raises after writing now has that write rolled back too.
+- The compliance suite now reports tools that never declared a guard, so a suite that
+  passed before may legitimately fail now. That is the fix, not a regression — set
+  `config.compliance_tools` to what you have certified so far.
 
 ### Fixed
 
