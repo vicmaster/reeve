@@ -4,6 +4,40 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
+## [Unreleased]
+
+### Fixed
+
+- **A denied invocation no longer leaves the host's data changed.** The envelope
+  authorizes before the tool runs, with the model class as the subject because no record
+  exists yet, and scopes the return value afterwards. A write tool lives between those two
+  points: it fetched a record, changed it, and only then was refused. The caller saw
+  `out_of_scope_record`, the ledger recorded a denial — and the row in the database had
+  already been rewritten by a principal who could not see it. A `deny` that follows a
+  committed write is not a partial guarantee, it is a false statement in the artifact the
+  ledger exists to be.
+
+  The tool body now runs in a transaction and a scope denial rolls it back. `requires_new`
+  makes it a savepoint, so a transaction the host opened around the invocation is left
+  alone — the rollback reaches the tool's work and stops there. Measured overhead is at or
+  below noise on a read-only call.
+
+  Two consequences worth knowing:
+
+  - A tool that **writes and then raises** now has that write rolled back too. It was
+    already recorded as `tool_error`; the data now matches what the ledger said.
+  - A host with no ActiveRecord, or with the library loaded but no connection, keeps the
+    previous behaviour — there is nothing to roll back, and neither should be made to fail.
+
+### Added
+
+- **`authorize!(record)`** inside a tool body — asks the declared policy about one record
+  and returns it, raising `DeniedError` if the policy says no. For the part of a tool a
+  rollback cannot reach: a sent email, a webhook, a written file. A denial raised this way
+  carries the policy's own rule into the ledger rather than being filed as `tool_error`,
+  and names no record, so a refusal and a record that does not exist still read the same
+  (FR-006).
+
 ## [0.3.0] - 2026-08-17
 
 Three of the limitations 0.1.0 shipped knowingly are now closed, and the audit-entry

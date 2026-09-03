@@ -55,7 +55,24 @@ RSpec.describe "envelope overhead" do
   #
   # Interleaved rather than run in two blocks so a machine that gets busy partway through
   # slows both sides rather than whichever happened to be under measurement.
-  it "adds no more than 5 ms over running the query directly" do
+  # The envelope opens a transaction around the tool body so a denied invocation leaves
+  # nothing behind, which costs two round trips (BEGIN, COMMIT) that the bare baseline does
+  # not pay. That is a fixed, intended cost, not the per-record work this example exists to
+  # catch — but it is real, and on a database reached over a network it is two network hops
+  # rather than two function calls. Measured over a Docker port-forward to MySQL it moved
+  # the overhead from 1.7ms to 3.3ms and made a 5ms budget flaky under load.
+  #
+  # So the budget is stated in the terms the cost is actually paid in: 5ms of envelope
+  # work, plus the round trips the envelope is designed to spend. A regression that does
+  # per-record work still blows past this by orders of magnitude on any database; a distant
+  # database no longer fails a spec about the envelope.
+  def round_trip_ms
+    connection = ActiveRecord::Base.connection
+    5.times { connection.select_value("SELECT 1") }
+    Array.new(20) { elapsed_ms { connection.select_value("SELECT 1") } }.min
+  end
+
+  it "adds no more than 5 ms of its own work over running the query directly" do
     warmup = 5
     trials = 30
 
@@ -74,11 +91,14 @@ RSpec.describe "envelope overhead" do
     end
 
     overhead = guarded.min - bare.min
+    # BEGIN and COMMIT: the transaction the envelope wraps the tool body in.
+    budget = 5.0 + (2 * round_trip_ms)
 
-    expect(overhead).to be < 5.0,
-                        "envelope added #{overhead.round(2)}ms per call (fastest of " \
-                        "#{trials}: guarded #{guarded.min.round(2)}ms, bare " \
-                        "#{bare.min.round(2)}ms)"
+    expect(overhead).to be < budget,
+                        "envelope added #{overhead.round(2)}ms per call against a " \
+                        "#{budget.round(2)}ms budget (fastest of #{trials}: guarded " \
+                        "#{guarded.min.round(2)}ms, bare #{bare.min.round(2)}ms, " \
+                        "round trip #{round_trip_ms.round(3)}ms)"
   end
 
   # The failure this guards against is the tempting one: authorizing each record
