@@ -8,6 +8,23 @@ Versioning](https://semver.org), with one rule specific to what it does — see
 
 ### Fixed
 
+- **The compliance suite can see a tool that has no guard.** It walked the guard registry,
+  which holds one entry per `guard_with` — so every subject it checked had a guard by
+  construction, and `GuardDeclared`, the check whose whole job is naming tools that lack
+  one, could not fail. An application with three guarded tools and one that was forgotten
+  reported `4 checks, 4 passed`. The gem's own quickstart demonstrated this: it ships a
+  deliberately unguarded tool and then asserted that the compliance run passed.
+
+  Tools are now recorded when they include `Reeve::Guard`, declared or not — through
+  inheritance too, so an adapter that includes the DSL into a base class once (fast-mcp)
+  no longer hides every tool built on it. `Reeve.registry.unguarded_tool_classes` is the
+  worklist. A base class that carries the DSL for its subclasses declares itself with
+  `reeve_abstract!` rather than being guessed at: inferring "anything with a subclass is a
+  base" would silently drop a real tool from the run the moment someone subclassed it.
+
+  **Reeve can only see tools that reached it.** An MCP server dispatching tools reeve was
+  never told about is still invisible to it — pass `tools:` to certify the real inventory.
+
 - **A denied invocation no longer leaves the host's data changed.** The envelope
   authorizes before the tool runs, with the model class as the subject because no record
   exists yet, and scopes the return value afterwards. A write tool lives between those two
@@ -30,6 +47,13 @@ Versioning](https://semver.org), with one rule specific to what it does — see
     previous behaviour — there is nothing to roll back, and neither should be made to fail.
 
 ### Added
+
+- **`config.compliance_tools`** — which tools the suite certifies, as an array or a
+  callable, defaulting to every tool reeve knows about. A retrofit is the normal state of
+  an application adopting this, and now that unguarded tools are reported, one that has
+  guarded three of thirty has a red build it cannot honestly turn green. A build expected
+  to be red is a build nobody reads. Narrowing the list states what has been certified —
+  a claim that can go green and stay green as the list grows.
 
 - **`authorize!(record)`** inside a tool body — asks the declared policy about one record
   and returns it, raising `DeniedError` if the policy says no. For the part of a tool a

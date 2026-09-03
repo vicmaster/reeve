@@ -13,8 +13,47 @@ module Reeve
 
       def initialize
         @declarations = {}
+        @known = {}     # every class that included Guard, declared or not
+        @abstract = {}  # bases others inherit from; not tools themselves
         @name_index = nil # invalidated on every add; see #name_index
         @mutex = Mutex.new
+      end
+
+      # A class that included the DSL. Recorded whether or not it goes on to declare
+      # anything, because a tool that forgot `guard_with` is precisely the one worth
+      # finding, and it is absent from `@declarations` by definition.
+      def note(tool_class)
+        @mutex.synchronize { @known[tool_class] = true }
+        tool_class
+      end
+
+      # A base others inherit from — `FastMcp::Tool`, or a host's own `ApplicationTool`.
+      # It acquires the DSL so its subclasses have it, and it is not itself a tool, so
+      # asking whether it declared a guard is a question with no useful answer.
+      #
+      # Explicit rather than inferred. The obvious heuristic — "a class something else
+      # inherits from is a base" — silently drops a real tool from the compliance run the
+      # moment someone subclasses it, and a check that quietly stops checking is the
+      # failure mode this whole file exists to prevent.
+      def mark_abstract(tool_class)
+        @mutex.synchronize { @abstract[tool_class] = true }
+        tool_class
+      end
+
+      def abstract?(tool_class)
+        @abstract.key?(tool_class)
+      end
+
+      # Every tool reeve knows about: the ones that declared a guard and the ones that
+      # only included the DSL. This is what the compliance suite walks, so that "all
+      # checks passed" cannot mean "we only looked at the tools that were already safe".
+      def tool_classes
+        (@known.keys | @declarations.keys).reject { |klass| abstract?(klass) }
+      end
+
+      # The worklist.
+      def unguarded_tool_classes
+        tool_classes.reject { |klass| @declarations.key?(klass) }
       end
 
       # The DSL's `guard_with`. Declaring twice on one class is a mistake worth naming;
@@ -74,6 +113,8 @@ module Reeve
       def remove(tool_class)
         @mutex.synchronize do
           @declarations.delete(tool_class)
+          @known.delete(tool_class)
+          @abstract.delete(tool_class)
           @name_index = nil
         end
       end
@@ -81,6 +122,8 @@ module Reeve
       def reset!
         @mutex.synchronize do
           @declarations = {}
+          @known = {}
+          @abstract = {}
           @name_index = nil
         end
       end

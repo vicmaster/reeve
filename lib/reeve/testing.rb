@@ -40,12 +40,25 @@ module Reeve
         principals
       end
 
+      # The tools the suite walks. Unset means every tool reeve knows about — the classes
+      # that included the DSL, guarded or not. That default is what makes an unguarded
+      # tool visible rather than merely absent.
+      attr_writer :compliance_tools
+
+      def compliance_tools
+        source = @compliance_tools || Reeve.config.compliance_tools
+        return Reeve.registry.tool_classes if source.nil?
+
+        Array(source.respond_to?(:call) ? source.call : source)
+      end
+
       def compliance_principals?
         !(@compliance_principals || Reeve.config.compliance_principals).nil?
       end
 
       def reset!
         @compliance_principals = nil
+        @compliance_tools = nil
       end
 
       private

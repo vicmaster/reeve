@@ -16,10 +16,22 @@ module Reeve
   module Guard
     def self.included(base)
       base.extend(ClassMethods)
+      Reeve.registry.note(base)
     end
 
     # Class-level DSL. See contracts/tool-dsl.md.
     module ClassMethods
+      # Declares this class a base rather than a tool: it carries the DSL so its
+      # subclasses have it, and the compliance suite should not ask whether it is guarded.
+      #
+      #   class ApplicationTool
+      #     include Reeve::Guard
+      #     reeve_abstract!
+      #   end
+      def reeve_abstract!
+        Reeve.registry.mark_abstract(self)
+      end
+
       # Declares which policy governs this tool. Absence is not neutral: a tool with no
       # declaration is denied by the envelope (FR-002, FR-004).
       def guard_with(policy, action: nil)
@@ -59,8 +71,16 @@ module Reeve
 
       # A subclass of a guarded tool is itself guarded, and is registered under its own
       # name so the envelope — which only ever has a name — can find it.
+      #
+      # The note comes first and unconditionally, because a subclass of an *unguarded*
+      # base is the case worth catching: subclasses acquire the DSL without ever running
+      # `included`, so without this every fast-mcp tool would be invisible to the
+      # compliance suite — that adapter includes Guard into `FastMcp::Tool` once and lets
+      # inheritance do the rest.
       def inherited(subclass)
         super
+        Reeve.registry.note(subclass)
+
         declaration = reeve_guard
         # An anonymous subclass has no name to be looked up by; it still inherits the
         # declaration through the ancestry walk in Registry#for_class.

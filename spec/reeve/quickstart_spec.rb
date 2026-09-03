@@ -35,7 +35,8 @@ RSpec.describe "the quickstart", if: rails_available do
       "an undeclared tool is denied",
       "every call left exactly one entry, allowed and denied alike",
       "a redacted argument keeps its name and loses its value",
-      "the compliance suite runs from plain Ruby and passes",
+      "the compliance suite finds the tool this app forgot to guard",
+      "and passes once that tool is the only thing excluded",
       "the kit catches a tool that leaks across principals"
     ].each { |promise| expect(output).to include("ok #{promise}") }
   end

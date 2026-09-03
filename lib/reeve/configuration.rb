@@ -24,7 +24,7 @@ module Reeve
     SETTINGS = %i[
       principal_resolver unguarded_tools audit_failure_mode redact_arguments
       max_recorded_ids policy_adapter default_action audit_recorder logger
-      compliance_principals
+      compliance_principals compliance_tools
     ].freeze
 
     attr_reader(*SETTINGS)
@@ -40,11 +40,33 @@ module Reeve
       @audit_recorder     = nil
       @logger             = nil
       @compliance_principals = nil
+      @compliance_tools = nil
     end
 
     # Two fixture principals with disjoint records — the only host setup the compliance
     # suite needs (contracts/testing-kit.md). A callable rather than a value, because in a
     # Rails test suite the fixtures do not exist yet when the helper is loaded.
+    # Which tools the compliance suite certifies. Defaults to every tool reeve knows
+    # about, which is the answer a finished application wants.
+    #
+    # A host part-way through a retrofit needs the other answer. Once the suite reports
+    # unguarded tools — which is the whole point of it — an application with thirty tools
+    # and three guarded ones has a red build it cannot honestly turn green, and a red
+    # build that is expected to be red stops being read. Narrowing the list says "these
+    # are the ones I have certified", which is a claim that can go green and then stay
+    # green as the list grows.
+    #
+    #   config.compliance_tools = -> { [SearchLeadsTool, GetLeadTool] }
+    def compliance_tools=(tools)
+      unless tools.nil? || tools.respond_to?(:call) || tools.is_a?(Array)
+        raise ArgumentError,
+              "compliance_tools must be an Array or a callable returning one, " \
+              "got #{tools.inspect}"
+      end
+
+      @compliance_tools = tools
+    end
+
     def compliance_principals=(principals)
       unless principals.nil? || principals.respond_to?(:call) || principals.is_a?(Array)
         raise ArgumentError,
