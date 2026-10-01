@@ -35,6 +35,10 @@ gem "pundit"
 if RUBY_VERSION < "3.1"
   gem "activerecord", "~> 7.0.0"
   gem "activesupport", "~> 7.0.0"
+  # json 3.0 dropped the `quirks_mode:` keyword that ActiveSupport 7.0 still passes to
+  # JSON.generate, so every ledger write on this stack raised. The floor job proves the
+  # stack a Ruby 3.0 application can actually run, and that stack is json 2.x.
+  gem "json", "< 3"
   gem "railties", "~> 7.0.0"
   gem "sqlite3", "~> 1.7"
 else
