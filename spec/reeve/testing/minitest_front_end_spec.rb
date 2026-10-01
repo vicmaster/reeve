@@ -120,11 +120,16 @@ RSpec.describe Reeve::Testing::Assertions, :reeve_fixtures do
         "test_reeve_cross_principal_leak", "test_reeve_audit_coverage",
         "test_reeve_guard_declared", "test_reeve_rule_present",
         "test_reeve_redaction_holds", "test_reeve_principal_required",
-        "test_reeve_contract_version"
+        "test_reeve_contract_version", "test_reeve_endpoint_coverage"
       )
     end
 
     it "passes every one of them against a compliant registry" do
+      Reeve.config.inventory = Reeve::Inventory.new(
+        registered: %w[search_invoices],
+        routed: { "search_invoices" => ReeveFixtures::CompliantInvoiceTool }
+      )
+
       results = reeve_test_methods(test_case).map do |method|
         test_case.new(method).public_send(method)
         :passed
@@ -133,6 +138,11 @@ RSpec.describe Reeve::Testing::Assertions, :reeve_fixtures do
       end
 
       expect(results).to all(eq(:passed))
+    end
+
+    it "skips endpoint coverage, with its reason, when no inventory is declared" do
+      expect { test_case.new("x").test_reeve_endpoint_coverage }
+        .to raise_error(Minitest::Skip, /no endpoint inventory is declared/)
     end
 
     it "fails the matching method, and names the tool, when a tool leaks" do

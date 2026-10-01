@@ -15,7 +15,8 @@ module Reeve
     #
     # One method per check, matching the RSpec shared example group one for one, so a red
     # build names the guarantee that broke rather than reporting "compliance" as one
-    # undifferentiated failure.
+    # undifferentiated failure. A check that could establish nothing either way is
+    # skipped with its reason, never passed.
     module ComplianceAssertions
       include Assertions
 
@@ -25,6 +26,7 @@ module Reeve
 
         define_method(method_name) do
           report = Checks.run(check, principals: Testing.compliance_principals)
+          skip(report.to_s) if report.skipped?
           assert report.passed?, report.to_s
           report
         end

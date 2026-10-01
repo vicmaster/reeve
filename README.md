@@ -242,12 +242,10 @@ config.compliance_tools = -> { [InvoiceSearchTool, InvoiceShowTool] }
 ```
 
 Reeve can only see tools that reached it. If your MCP server dispatches tools Reeve has
-never been told about — a custom controller with its own registry — hand it the real
-inventory, or it will certify the subset it happens to know:
-
-```ruby
-Reeve::Checks.run_all(principals: [alice, bob], tools: McpToolRegistry.tool_classes)
-```
+never been told about — a custom controller with its own registry — declare the server's
+real inventory ([below](#every-tool-the-endpoint-dispatches)), or the run certifies the
+subset Reeve happens to know. Until you do, the suite says so: `EndpointCoverage` is
+reported as skipped, never as passed.
 
 As a Rails rake task:
 
@@ -379,6 +377,91 @@ Reeve::Checks.run_all(
 
 That is the whole integration: one call site, your auth untouched, and the same three
 guarantees the fast-mcp adapter gets.
+
+## Every tool the endpoint dispatches
+
+Reeve protects the tools routed through it, and only those. A server that registers tools
+as names and handler blocks can send some through `Reeve.invoke` and run the rest directly
+— and the direct ones are not unguarded, they are invisible: no denial, no scope, no ledger
+row, and nothing that says so. Deny-by-default cannot deny a call it never sees.
+
+`Reeve::Inventory` makes the server's own list of names the thing that gets checked:
+
+```ruby
+# config/initializers/reeve.rb
+McpInventory = Reeve::Inventory.new(
+  registered: -> { McpServer.tool_names },
+  routed: -> { { "search_invoices" => InvoiceSearchTool, "get_invoice" => InvoiceShowTool } },
+  exemptions: { "healthcheck" => { reason: "returns no application data" } }
+)
+
+Reeve.configure { |config| config.inventory = McpInventory }
+```
+
+Each part takes a value or a callable. Callables are read when asked, so the initializer
+neither autoloads application constants nor runs before the server has registered its
+tools.
+
+```text
+reeve inventory: 4 registered
+  2 protected and guarded
+  0 routed through reeve but unguarded
+  1 bypasses reeve
+  1 exempted
+coverage: incomplete
+
+BYPASS export_invoices
+  registered with the server but neither routed through reeve nor exempted — route it to
+  a guarded tool, or exempt it with a reason
+
+EXEMPT healthcheck
+  returns no application data
+```
+
+The report names tools, classes and exemption reasons — never an argument, a principal or
+a record — so it is safe to print in CI. An exemption without a reason is refused, and one
+with a reason is listed every time, complete or not.
+
+**Fail boot or CI on a gap:**
+
+```ruby
+McpInventory.verify!   # raises Reeve::IncompleteInventoryError, carrying the report
+```
+
+**Dispatch through it, and a bypass stops being possible:**
+
+```ruby
+def call_tool
+  name = params.dig(:params, :name)
+  arguments = params.dig(:params, :arguments).to_h.symbolize_keys
+
+  result = McpInventory.dispatch(name, arguments: arguments,
+                                       agent: { id: request.headers["X-MCP-Client"] }) do
+    McpServer.handlers.fetch(name).call(arguments)
+  end
+
+  render json: { jsonrpc: "2.0", id: params[:id], result: serialize(result) }
+rescue Reeve::DeniedError => e
+  render json: { jsonrpc: "2.0", id: params[:id],
+                 error: { code: -32_003, message: e.message } }
+end
+```
+
+- A **routed** name runs through `Reeve.invoke` under its class's guard, with the handler
+  block as the body. A registry of blocks needs one guarded class per tool to name its
+  policy, and nothing else — the block still does the work, and what it returns is scoped.
+  Handlers dispatched this way should not call `Reeve.invoke` themselves.
+- An **exempt** name runs the block as written.
+- **Any other name** is a tool with no guard, and `unguarded_tools` decides: refused with
+  `unbound_tool` under `:deny`, the default; run unscoped and recorded with `guard: "none"`
+  under `:allow_with_warning`. Recorded either way, so a name the inventory missed lands on
+  the same ledger worklist as an unguarded class.
+
+**In the compliance suite,** `EndpointCoverage` compares the run against the inventory. It
+passes only when every registered tool is guarded or exempt and the run covered all of
+them. It fails when the run claimed the whole endpoint and something bypasses Reeve. A run
+narrowed by `compliance_tools` is reported as a subset — skipped, naming what it left out —
+so a retrofit stays green without passing for complete coverage.
 
 Policies are plain objects unless you want Pundit (`authorize` and `scope`, two methods).
 The ledger is an ActiveRecord table unless you supply your own recorder. Records are

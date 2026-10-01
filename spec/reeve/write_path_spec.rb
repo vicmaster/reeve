@@ -177,7 +177,10 @@ RSpec.describe "authorize! inside a tool body" do
   end
 
   it "names no record, so a refusal and a missing record read the same" do
-    theirs = Invoice.create!(number: "THEIRS", owner_id: bob.id)
+    # An id no principal can share. The assertion below is a substring match, and with
+    # the default sequence this record and alice are both id 1 often enough to flake on
+    # "principal 1".
+    theirs = Invoice.create!(id: 987_654, number: "THEIRS", owner_id: bob.id)
 
     raised = nil
     begin

@@ -3,7 +3,7 @@
 module Reeve
   module Testing
     module Matchers
-      # The escape hatch that keeps SC-009 honest: every one of the seven checks is
+      # The escape hatch that keeps SC-009 honest: every check is
       # assertable from RSpec, not only the two with names of their own.
       #
       #   expect(Reeve::Checks::RedactionHolds.new(tool: T, principal: alice))

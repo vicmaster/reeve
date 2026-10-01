@@ -24,7 +24,7 @@ module Reeve
     SETTINGS = %i[
       principal_resolver unguarded_tools audit_failure_mode redact_arguments
       max_recorded_ids policy_adapter default_action audit_recorder logger
-      compliance_principals compliance_tools
+      compliance_principals compliance_tools inventory
     ].freeze
 
     attr_reader(*SETTINGS)
@@ -41,6 +41,30 @@ module Reeve
       @logger             = nil
       @compliance_principals = nil
       @compliance_tools = nil
+      @inventory = nil
+    end
+
+    # The host's whole tool inventory (Reeve::Inventory). Optional. Setting it is what lets
+    # the compliance suite say whether it covered the endpoint or only the tools reeve
+    # happened to be told about.
+    def inventory=(inventory)
+      unless inventory.nil? || inventory.is_a?(Inventory)
+        raise ArgumentError, "inventory must be a Reeve::Inventory, got #{inventory.inspect}"
+      end
+
+      @inventory = inventory
+    end
+
+    # This configuration with the principal fixed for one invocation.
+    #
+    # An explicitly supplied principal is just a resolver that returns it. Routing it
+    # through the same resolution step rather than around it keeps one answer to "where
+    # did this principal come from" — the envelope still resolves, records and denies
+    # identically, and a nil passed in still denies with `no_principal`.
+    def with_principal(principal)
+      return self if principal == :unset
+
+      dup.tap { |scoped| scoped.principal_resolver = ->(_context) { principal } }
     end
 
     # Two fixture principals with disjoint records — the only host setup the compliance

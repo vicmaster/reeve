@@ -222,10 +222,10 @@ RSpec.describe Reeve::Checks, :reeve_fixtures do
   end
 
   describe "the layer as a whole" do
-    it "enumerates the seven checks the contract names" do
+    it "enumerates the checks the contract names" do
       expect(Reeve::Checks::ALL.map(&:check_name)).to contain_exactly(
         "CrossPrincipalLeak", "AuditCoverage", "GuardDeclared", "RulePresent",
-        "RedactionHolds", "PrincipalRequired", "ContractVersion"
+        "RedactionHolds", "PrincipalRequired", "ContractVersion", "EndpointCoverage"
       )
     end
 

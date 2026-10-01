@@ -56,14 +56,14 @@ module Reeve
         )
       end
 
-      # SC-009's escape hatch: any of the seven, straight from Minitest.
+      # SC-009's escape hatch: any check, straight from Minitest.
       def assert_reeve_check(check)
         result = check.call
         assert result.passed?, result.message
         result
       end
 
-      # A whole Report at once, for a host that would rather have one test than seven.
+      # A whole Report at once, for a host that would rather have one test than one per check.
       def assert_reeve_compliance(principals: nil, **options)
         report = Checks.run_all(
           principals: principals || Testing.compliance_principals, **options

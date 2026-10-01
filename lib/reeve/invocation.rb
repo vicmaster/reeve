@@ -90,7 +90,9 @@ module Reeve
       context.principal = principal
 
       guard = look_up_guard
-      return guard if guard.is_a?(Decision) # registry blew up
+      # A registry may answer with a refusal instead of a guard: the lookup raised, or an
+      # Inventory is refusing a name it has no entry for.
+      return guard if guard.is_a?(Decision)
 
       if guard.nil?
         if deny_unguarded?

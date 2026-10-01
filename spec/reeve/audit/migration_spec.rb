@@ -50,9 +50,14 @@ RSpec.describe "the audit entries migration" do
     end
   end
 
+  # Read through the boolean type rather than matched as a string: each engine, and each
+  # ActiveRecord release, spells the same default differently — "0", false, and since
+  # 8.1.4 on PostgreSQL, "false". What matters is that it casts to false, not to nil.
   it "defaults the flag columns so an insert never has to spell them out" do
-    expect(column("truncated").default).to eq("0").or eq(false)
-    expect(column("derived").default).to eq("0").or eq(false)
+    boolean = ActiveModel::Type::Boolean.new
+
+    expect(boolean.cast(column("truncated").default)).to be(false)
+    expect(boolean.cast(column("derived").default)).to be(false)
     expect(column("record_count").default.to_i).to eq(0)
   end
 
