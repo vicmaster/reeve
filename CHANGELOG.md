@@ -27,6 +27,15 @@ Behaviour changes worth reading before upgrading:
   skip is not a failure.
 - A multi-line check message is now indented as one block under its `FAIL` heading.
 
+**On Rails 7.0, keep `json` below 3.0.** json 3.0 dropped the `quirks_mode:` keyword that
+ActiveSupport 7.0 still passes to `JSON.generate`, so the ledger cannot serialize a row.
+Under the default `audit_failure_mode = :fail`, reeve fails closed: every invocation raises
+`Reeve::AuditWriteError` rather than running unrecorded — nothing goes unaudited, and
+nothing runs. Under `:warn`, every call runs and none is recorded. The defect is ActiveSupport's, not
+reeve's, and no reeve version works around it; pin `gem "json", "< 3"` until the
+application is on a Rails that supports json 3. Reeve's own CI pins it on the Ruby 3.0
+job for the same reason.
+
 ### Added
 
 - **`Reeve::Inventory`** — the host's registered tool names, which of them route through
