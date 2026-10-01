@@ -4,7 +4,7 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.5.0] - 2026-10-01
 
 Reeve protects the tools routed through it, and only those. A server that registers its
 tools as names and handler blocks can send some through `Reeve.invoke` and run the rest
