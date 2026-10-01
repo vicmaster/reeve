@@ -34,7 +34,9 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
 
     expect(report).to be_passed
     expect(report.failures).to be_empty
-    expect(report.to_s).to eq("reeve compliance: 7 checks, 7 passed, 0 failed")
+    expect(report.to_s).to start_with(
+      "reeve compliance: 8 checks, 7 passed, 0 failed, 1 skipped\n\nSKIP EndpointCoverage"
+    )
   end
 
   it "fails as a whole when any one check fails" do
@@ -47,7 +49,7 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
   it "names the offending tool and check in a body a human can act on (SC-007)" do
     report = run_all(tools: [ReeveFixtures::LeakyInvoiceTool])
 
-    expect(report.to_s).to start_with("reeve compliance: 7 checks, 6 passed, 1 failed")
+    expect(report.to_s).to start_with("reeve compliance: 8 checks, 6 passed, 1 failed, 1 skipped")
     expect(report.to_s).to include("FAIL CrossPrincipalLeak")
     expect(report.to_s).to include("ReeveFixtures::LeakyInvoiceTool")
   end
@@ -68,7 +70,7 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
     )
 
     expect(report.failures.size).to be >= 2
-    expect(report.size).to eq(13)
+    expect(report.size).to eq(14)
   end
 
   it "runs with an empty registry rather than blowing up" do
@@ -76,7 +78,7 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
 
     report = run_all
 
-    expect(report.size).to eq(1)
+    expect(report.size).to eq(2)
     expect(report).to be_passed
   end
 
@@ -93,6 +95,35 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
       expect(described_class.new([passing, failing]).to_s).to eq(
         "reeve compliance: 2 checks, 1 passed, 1 failed\n\nFAIL AuditCoverage\n  not fine"
       )
+    end
+
+    describe "a skipped check" do
+      let(:skipped) do
+        Reeve::Testing::Result.skipped(check: "EndpointCoverage", message: "did not look\nhere")
+      end
+
+      it "is neither a pass nor a failure, and is printed with its reason" do
+        report = described_class.new([passing, skipped])
+
+        expect(report).to be_passed
+        expect(report.passes.size).to eq(1)
+        expect(report.to_s).to eq(
+          "reeve compliance: 2 checks, 1 passed, 0 failed, 1 skipped\n\n" \
+          "SKIP EndpointCoverage\n  did not look\n  here"
+        )
+      end
+
+      it "makes the report skipped only when nothing else was established" do
+        expect(described_class.new([skipped])).to be_skipped
+        expect(described_class.new([passing, skipped])).not_to be_skipped
+        expect(described_class.new([])).not_to be_skipped
+      end
+
+      it "lists failures before skips, so the red reads first" do
+        report = described_class.new([skipped, failing])
+
+        expect(report.to_s.index("FAIL")).to be < report.to_s.index("SKIP")
+      end
     end
   end
 

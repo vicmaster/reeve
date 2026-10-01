@@ -22,7 +22,7 @@ RSpec.describe "the testing kit in isolation" do
       loaded = %w[RSpec Minitest ActiveRecord ActiveSupport Pundit FastMcp MCP ActionMCP]
                .select { |name| Object.const_defined?(name) }
       abort "unexpectedly loaded: \#{loaded.join(', ')}" unless loaded.empty?
-      abort "Checks missing" unless Reeve::Checks::ALL.size == 7
+      abort "Checks missing" unless Reeve::Checks::ALL.size == 8
       puts "checks only"
     RUBY
 

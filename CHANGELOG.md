@@ -4,6 +4,67 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
+## [Unreleased]
+
+Reeve protects the tools routed through it, and only those. A server that registers its
+tools as names and handler blocks can send some through `Reeve.invoke` and run the rest
+directly — and the direct ones are not unguarded, they are invisible: no denial, no scope,
+no ledger row, and nothing that says so. The compliance suite could not see them either,
+because it walks tools reeve was told about. A green run certified the subset reeve
+happened to know, and read exactly like a green run over the whole endpoint.
+
+**The audit-entry contract is unchanged at `2`, so no migration is required.** One new
+`rule` value, `unbound_tool`, can appear — only for a host that dispatches through an
+inventory.
+
+Behaviour changes worth reading before upgrading:
+
+- Both compliance suites have one more check, `EndpointCoverage`. Until `config.inventory`
+  is set it is **skipped** — pending in RSpec, a skip in Minitest — with a message saying
+  the endpoint was not verified. Nothing that passed before fails.
+- A `Report` now counts and prints skipped results (`8 checks, 7 passed, 0 failed, 1
+  skipped`, followed by `SKIP EndpointCoverage` and its reason). `passed?` is unchanged: a
+  skip is not a failure.
+- A multi-line check message is now indented as one block under its `FAIL` heading.
+
+### Added
+
+- **`Reeve::Inventory`** — the host's registered tool names, which of them route through
+  reeve and to which class, and which are exempt and why. Every part takes a value or a
+  callable, so a Rails initializer can declare it without autoloading application
+  constants. No MCP library involved: a list of names is the whole protocol.
+
+  - `#report` classifies every registered name as protected and guarded, routed but
+    unguarded, bypassing reeve, or exempted — plus anything the inventory names that the
+    server does not register, which is usually a rename that left the real name unbound.
+    The output names tools, classes and exemption reasons, never an argument, a principal
+    or a record, so it is safe in a CI log.
+  - `#verify!` raises `Reeve::IncompleteInventoryError`, carrying the report, unless every
+    registered name is guarded or exempt. For boot, a deploy step, or CI.
+  - `#dispatch(name, ...) { handler }` is the dispatch boundary. A routed name runs through
+    `Reeve.invoke`, with the handler block as the body; an exempt name runs as written; any
+    other name is treated as a tool with no guard — refused with the new `unbound_tool`
+    rule under `unguarded_tools = :deny`, or run unscoped with `guard: "none"` under
+    `:allow_with_warning` — and recorded either way. A host that dispatches through it
+    cannot have a tool that bypasses reeve.
+  - An exemption needs a non-empty reason, and is listed in every report, complete or not.
+
+- **`config.inventory`**, and **`Checks::EndpointCoverage`**, which compares a compliance
+  run against it. Passes only when the inventory is complete and the run covered all of
+  it; fails when the run claimed the whole endpoint and a registered tool bypasses reeve
+  or reaches it unguarded; skipped when no inventory is declared, or when
+  `compliance_tools` or `tools:` narrowed the run, naming what was left out. The
+  incremental path stays open, and a subset can no longer pass for the endpoint.
+
+- **Skipped results.** `Testing::Result.skipped`, `Result#skipped?`, `Report#skips` and
+  `Report#skipped?`. Only `EndpointCoverage` produces one.
+
+### Changed
+
+- The compliance suites' default population includes every class the inventory routes to.
+  A registry of blocks has no reason to `include Reeve::Guard` anywhere, so a routed class
+  with no guard would otherwise never reach `GuardDeclared`.
+
 ## [0.4.0] - 2026-09-03
 
 Everything here came out of a second application integrating the gem — one that had put a
@@ -342,4 +403,4 @@ is for:
 - Adding a nullable ledger column is minor and leaves the audit-entry contract version
   alone. Removing or renaming a column, or changing what a value means, is major and bumps
   it.
-- The audit-entry contract version is `1`.
+- The audit-entry contract version is `2`.

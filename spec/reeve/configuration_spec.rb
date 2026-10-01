@@ -232,7 +232,7 @@ RSpec.describe Reeve::Configuration do
       expect(config.to_h.keys).to contain_exactly(
         :principal_resolver, :unguarded_tools, :audit_failure_mode, :redact_arguments,
         :max_recorded_ids, :policy_adapter, :default_action, :audit_recorder, :logger,
-        :compliance_principals, :compliance_tools
+        :compliance_principals, :compliance_tools, :inventory
       )
     end
   end

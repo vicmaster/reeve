@@ -8,10 +8,11 @@ require_relative "checks/rule_present"
 require_relative "checks/redaction_holds"
 require_relative "checks/principal_required"
 require_relative "checks/contract_version"
+require_relative "checks/endpoint_coverage"
 
 module Reeve
   module Testing
-    # The seven guarantees, as objects.
+    # The guarantees, as objects.
     #
     # This is the whole of the testing kit's logic. The RSpec matchers and the Minitest
     # assertions are adapters over it and contain no assertions of their own, which is why
@@ -29,11 +30,13 @@ module Reeve
         RulePresent,
         RedactionHolds,
         PrincipalRequired,
-        ContractVersion
+        ContractVersion,
+        EndpointCoverage
       ].freeze
 
-      # The checks that are asked once about the ledger rather than once per tool.
-      GLOBAL = [ContractVersion].freeze
+      # The checks that are asked once — about the ledger, or about the endpoint as a
+      # whole — rather than once per tool.
+      GLOBAL = [ContractVersion, EndpointCoverage].freeze
 
       # The compliance suite's engine (FR-018): every check, against every registered
       # guarded tool, in one Report.
@@ -53,7 +56,10 @@ module Reeve
       # test method out of, so that a failing suite names the guarantee that broke rather
       # than reporting "compliance" as one undifferentiated red.
       def self.run(check, principals:, tools: nil, arguments: {}, invoke: nil, ledger: nil)
-        return Report.new([check.new(ledger: ledger).call]) if GLOBAL.include?(check)
+        if GLOBAL.include?(check)
+          return Report.new([build(check, tool: nil, principals: principals, tools: tools,
+                                          ledger: ledger).call])
+        end
 
         subjects = tools || Testing.compliance_tools
         Report.new(
@@ -74,12 +80,17 @@ module Reeve
 
       # The one place that knows what each check's constructor wants. Front-ends and hosts
       # ask for a check by class and get a configured one back.
-      def self.build(check, tool:, principals:, arguments: {}, invoke: nil, ledger: nil)
+      #
+      # +tools+ is the population the run was given, which only EndpointCoverage reads: an
+      # explicit list is a narrowed run, and it must say so.
+      def self.build(check, tool:, principals:, arguments: {}, invoke: nil, ledger: nil,
+                     tools: nil)
         common = { tool: tool, arguments: arguments, invoke: invoke, ledger: ledger }
 
         case check.check_name
         when "GuardDeclared"      then GuardDeclared.new(tool: tool, ledger: ledger)
         when "ContractVersion"    then ContractVersion.new(ledger: ledger)
+        when "EndpointCoverage"   then EndpointCoverage.new(tools: tools, ledger: ledger)
         when "PrincipalRequired"  then PrincipalRequired.new(**common)
         when "CrossPrincipalLeak" then CrossPrincipalLeak.new(principals: Array(principals),
                                                               **common)

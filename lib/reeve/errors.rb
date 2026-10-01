@@ -57,6 +57,19 @@ module Reeve
     end
   end
 
+  # Raised by Inventory#verify! when a registered tool is not protected: routed through
+  # reeve with no guard, not routed at all, or declared in the inventory but not registered
+  # with the server. The message is the whole report — tool names, classes and exemption
+  # reasons, never an argument, a principal or a record.
+  class IncompleteInventoryError < Error
+    attr_reader :report
+
+    def initialize(report)
+      @report = report
+      super(report.to_s)
+    end
+  end
+
   # Raised when the ledger write fails and audit_failure_mode is :fail (FR-012).
   #
   # It carries a rule like any other denial, because the failure is not recorded anywhere

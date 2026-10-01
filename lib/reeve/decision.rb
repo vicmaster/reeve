@@ -18,6 +18,10 @@ module Reeve
     # ledger records it as a deny — the trace of a call that blew up is the one most
     # worth having (R5).
     TOOL_ERROR              = "tool_error"
+    # A name dispatched through an Inventory that neither routes it through reeve nor
+    # exempts it. Not `no_guard_declared`: there may be no class to declare one on, and
+    # the fix is in the inventory.
+    UNBOUND_TOOL            = "unbound_tool"
 
     # The one reserved *allow* rule: a tool with no guard, permitted because the host
     # opted into :allow_with_warning. Kept out of RESERVED_RULES, which names deny paths.
@@ -33,7 +37,8 @@ module Reeve
       UNSCOPED_DERIVED_RESULT,
       OUT_OF_SCOPE_RECORD,
       AUDIT_WRITE_FAILED,
-      TOOL_ERROR
+      TOOL_ERROR,
+      UNBOUND_TOOL
     ].freeze
 
     OUTCOMES = %i[allow deny].freeze

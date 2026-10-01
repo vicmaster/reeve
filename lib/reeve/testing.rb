@@ -41,15 +41,21 @@ module Reeve
       end
 
       # The tools the suite walks. Unset means every tool reeve knows about — the classes
-      # that included the DSL, guarded or not. That default is what makes an unguarded
-      # tool visible rather than merely absent.
+      # that included the DSL, guarded or not, plus every class the endpoint inventory
+      # routes to, which need not have included anything. That default is what makes an
+      # unguarded tool visible rather than merely absent.
       attr_writer :compliance_tools
 
       def compliance_tools
         source = @compliance_tools || Reeve.config.compliance_tools
-        return Reeve.registry.tool_classes if source.nil?
+        return Reeve.registry.tool_classes | inventory_tools if source.nil?
 
         Array(source.respond_to?(:call) ? source.call : source)
+      end
+
+      # The host said which tools it is certifying, so a run is a subset by its own account.
+      def compliance_tools_narrowed?
+        !(@compliance_tools || Reeve.config.compliance_tools).nil?
       end
 
       def compliance_principals?
@@ -62,6 +68,16 @@ module Reeve
       end
 
       private
+
+      # An inventory that cannot be read adds nothing here; EndpointCoverage fails on it
+      # by name, which is a better place to learn about it than an exception in every
+      # per-tool check.
+      def inventory_tools
+        inventory = Reeve.config.inventory
+        inventory ? inventory.routed_tools : []
+      rescue StandardError
+        []
+      end
 
       def missing_principals_message
         "the reeve compliance suite needs two fixture principals with disjoint records. " \

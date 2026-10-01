@@ -40,6 +40,20 @@ Checks shipped in v1:
 | `Checks::RedactionHolds` | declared-sensitive values appear in no entry | FR-011 |
 | `Checks::PrincipalRequired` | no resolvable principal denies without consulting the policy | FR-001 |
 | `Checks::ContractVersion` | the ledger the host migrated implements the shape this gem version writes | FR-015 |
+| `Checks::EndpointCoverage` | every tool the server registers is routed through reeve and guarded, or exempted with a reason — and the run covered all of them | issue #20 |
+
+**On `EndpointCoverage` (added 2026-10-01)**: every other check walks a population reeve
+assembled itself, so a tool the host dispatches without ever handing it to reeve is absent
+from all of them, and the run goes green on the subset it could see. This check compares
+the run against the host's own list of registered names (`config.inventory`, a
+`Reeve::Inventory`). It is the one check that can come back **skipped** — neither passed
+nor failed — and does so in two cases: no inventory is declared, so there is nothing to
+compare against; or the host narrowed the run with `compliance_tools` or `tools:`, so the
+run is a subset by its own account. A skipped result is counted and printed in a `Report`
+(`SKIP EndpointCoverage`), shown as pending by the RSpec shared group and as a skip by
+`ComplianceAssertions`, and never counted as a pass. It fails when the run claimed the
+whole endpoint and a registered tool bypasses reeve, reaches it unguarded, or the inventory
+names a tool the server does not register.
 
 **On `ContractVersion` (corrected 2026-08-11)**: this originally said "the *recorded*
 contract version matches the gem", which is not checkable — there is no `contract_version`
@@ -56,7 +70,8 @@ with *disjoint* records. `expect: :nothing` (what `deny_access_for(stranger)` me
 if the named principal receives anything at all.
 
 `Checks::ALL` enumerates them; `Checks.run_all(principals:)` runs every check against every
-registered guarded tool and returns a `Report`. That is the compliance suite's engine, and
+tool reeve knows about — the classes that included `Reeve::Guard`, plus every class the
+inventory routes to — and returns a `Report`. That is the compliance suite's engine, and
 it is callable with no test framework present at all.
 
 **Because the checks are plain objects, the same guarantees are assertable outside a test

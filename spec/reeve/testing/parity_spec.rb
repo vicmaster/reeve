@@ -155,6 +155,8 @@ RSpec.describe "the testing kit across all three front-ends", :reeve_fixtures do
         begin
           instance.public_send(method)
           [method.to_s, :passed]
+        rescue Minitest::Skip => e
+          [method.to_s, [:skipped, e.message]]
         rescue Minitest::Assertion => e
           [method.to_s, [:failed, e.message]]
         end
@@ -165,6 +167,8 @@ RSpec.describe "the testing kit across all three front-ends", :reeve_fixtures do
       Reeve::Checks::ALL.map do |check|
         report = Reeve::Checks.run(check, principals: Reeve::Testing.compliance_principals)
         name = "test_reeve_#{check.check_name.gsub(/([a-z])([A-Z])/, '\1_\2').downcase}"
+        next [name, [:skipped, report.to_s]] if report.skipped?
+
         report.passed? ? [name, :passed] : [name, [:failed, report.to_s]]
       end.sort
     end

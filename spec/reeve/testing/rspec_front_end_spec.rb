@@ -90,9 +90,38 @@ RSpec.describe "a compliant server", :reeve_fixtures do
     ReeveFixtures::CompliantInvoiceTool.redact(:customer_ssn)
     ReeveFixtures::CompliantInvoiceTool.guard_with(ReeveFixtures::GoodInvoicePolicy)
     Reeve::Testing.compliance_principals = -> { ReeveFixtures.principals }
+    Reeve.config.inventory = Reeve::Inventory.new(
+      registered: %w[search_invoices],
+      routed: { "search_invoices" => ReeveFixtures::CompliantInvoiceTool }
+    )
   end
 
   after { Reeve::Testing.reset! }
 
   it_behaves_like "a reeve-compliant server"
+end
+
+# Without an inventory, endpoint coverage is something the run did not establish. The
+# shared group must say so as a pending example — visible in the run's output — rather
+# than as a green one.
+RSpec.describe "the shared group with no inventory declared", :reeve_fixtures do
+  it "marks endpoint coverage pending, with its reason, and passes the rest" do
+    Reeve::Testing.compliance_principals = -> { ReeveFixtures.principals }
+    ReeveFixtures::CompliantInvoiceTool.redact(:customer_ssn)
+    ReeveFixtures::CompliantInvoiceTool.guard_with(ReeveFixtures::GoodInvoicePolicy)
+
+    group = RSpec.describe("inner") { it_behaves_like "a reeve-compliant server" }
+    group.run(RSpec::Core::NullReporter)
+    statuses = group.descendants.flat_map(&:examples).to_h do |example|
+      [example.description[/satisfies (\w+)/, 1], example.execution_result]
+    end
+
+    expect(statuses.fetch("EndpointCoverage").status).to eq(:pending)
+    expect(statuses.fetch("EndpointCoverage").pending_message)
+      .to include("no endpoint inventory is declared")
+    expect(statuses.except("EndpointCoverage").values.map(&:status)).to all(eq(:passed))
+  ensure
+    RSpec.world.example_groups.delete(group) if group
+    Reeve::Testing.reset!
+  end
 end

@@ -42,6 +42,11 @@ Reeve.configure do |config|
   # setup the compliance suite needs (contracts/testing-kit.md). A callable, because in a
   # Rails test suite the fixtures do not exist when the helper is loaded.
   config.compliance_principals = -> { [users(:alice), users(:bob)] }
+
+  # Optional. The host's whole tool inventory — registered names, which route through
+  # reeve, which are exempt and why. Read by the compliance suite's EndpointCoverage.
+  config.inventory = Reeve::Inventory.new(registered: -> { McpServer.tool_names },
+                                          routed: -> { { "search_invoices" => InvoiceSearchTool } })
 end
 ```
 
@@ -68,6 +73,11 @@ end
   visible rather than merely absent. Set it to an Array or a callable to narrow the run to
   what a retrofit has certified so far. It bounds nothing at runtime; the envelope still
   denies every unguarded call per `unguarded_tools`.
+- `inventory` bounds nothing by being set. It is read by the testing kit, and enforced at
+  runtime only where the host dispatches through `Reeve::Inventory#dispatch` — which runs a
+  routed name through the envelope, an exempt name as the host wrote it, and any other
+  name as a tool with no guard: refused with `unbound_tool` under `unguarded_tools = :deny`,
+  run unscoped and recorded under `:allow_with_warning`.
 - A custom `audit_recorder` receives the same attributes the built-in one does and owns
   what it writes. If it writes to `Reeve::Audit::Entry`, it must set `contract_version`
   from `Reeve::Audit::CONTRACT_VERSION` — the model rejects a row that does not name its
@@ -83,4 +93,5 @@ end
 | `audit_failure_mode` | anything but the two symbols | `ArgumentError` at assignment |
 | `max_recorded_ids` | `< 1`, non-integer | `ArgumentError` at assignment |
 | `principal_resolver` | non-callable | `ArgumentError` at assignment |
+| `inventory` | anything but a `Reeve::Inventory` or nil | `ArgumentError` at assignment |
 | `policy_adapter` | symbol other than the three, or object missing `authorize`/`scope` | `ArgumentError` at assignment |

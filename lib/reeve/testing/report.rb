@@ -15,6 +15,8 @@ module Reeve
         freeze
       end
 
+      # Nothing failed. A skip is not a failure — and it is printed, so it is not
+      # mistaken for a pass either.
       def passed?
         failures.empty?
       end
@@ -23,12 +25,22 @@ module Reeve
         !passed?
       end
 
+      # Every result was a skip: the run established nothing either way. The front-ends
+      # report this as a skipped test rather than a green one.
+      def skipped?
+        !results.empty? && results.all?(&:skipped?)
+      end
+
       def failures
-        results.reject(&:passed?)
+        results.select(&:failed?)
       end
 
       def passes
         results.select(&:passed?)
+      end
+
+      def skips
+        results.select(&:skipped?)
       end
 
       def size
@@ -36,7 +48,8 @@ module Reeve
       end
 
       def to_s
-        [summary, *failures.map { |result| detail(result) }].join("\n")
+        [summary, *failures.map { |result| detail("FAIL", result) },
+         *skips.map { |result| detail("SKIP", result) }].join("\n")
       end
 
       def inspect
@@ -46,12 +59,15 @@ module Reeve
       private
 
       def summary
-        "reeve compliance: #{size} #{size == 1 ? 'check' : 'checks'}, " \
-          "#{passes.size} passed, #{failures.size} failed"
+        line = "reeve compliance: #{size} #{size == 1 ? 'check' : 'checks'}, " \
+               "#{passes.size} passed, #{failures.size} failed"
+        skips.empty? ? line : "#{line}, #{skips.size} skipped"
       end
 
-      def detail(result)
-        "\nFAIL #{result.check}\n  #{result.message}"
+      # Every line of a multi-line message indented, so it reads as one block under its
+      # heading rather than as stray lines of the report.
+      def detail(heading, result)
+        "\n#{heading} #{result.check}\n  #{result.message.gsub("\n", "\n  ")}"
       end
     end
   end

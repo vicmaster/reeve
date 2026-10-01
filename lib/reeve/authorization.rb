@@ -42,7 +42,7 @@ module Reeve
           registry: registry,
           authorizer: Authorization::Authorizer.new,
           scoper: Authorization::Scoper.new,
-          config: configuration_for(principal)
+          config: config.with_principal(principal)
         ) { body ? body.call : run(tool, arguments) }
       end
     end
@@ -61,16 +61,6 @@ module Reeve
       return klass.tool_name.to_s if klass.respond_to?(:tool_name) && klass.tool_name
 
       Authorization::Declaration.new(tool_class: klass, policy: nil, action: :index).tool_name
-    end
-
-    # An explicitly supplied principal is just a resolver that returns it. Routing it
-    # through the same resolution step rather than around it keeps one answer to "where
-    # did this principal come from" — the envelope still resolves, records and denies
-    # identically, and a nil passed in still denies with `no_principal`.
-    def configuration_for(principal)
-      return config if principal == :unset
-
-      config.dup.tap { |scoped| scoped.principal_resolver = ->(_context) { principal } }
     end
   end
 end

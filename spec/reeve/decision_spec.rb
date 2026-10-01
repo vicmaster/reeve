@@ -69,7 +69,8 @@ RSpec.describe Reeve::Decision do
         "unscoped_derived_result",
         "out_of_scope_record",
         "audit_write_failed",
-        "tool_error"
+        "tool_error",
+        "unbound_tool"
       )
     end
 
@@ -82,6 +83,7 @@ RSpec.describe Reeve::Decision do
       expect(described_class::OUT_OF_SCOPE_RECORD).to eq("out_of_scope_record")
       expect(described_class::AUDIT_WRITE_FAILED).to eq("audit_write_failed")
       expect(described_class::TOOL_ERROR).to eq("tool_error")
+      expect(described_class::UNBOUND_TOOL).to eq("unbound_tool")
     end
 
     it "names the one reserved allow rule separately from the deny paths" do
