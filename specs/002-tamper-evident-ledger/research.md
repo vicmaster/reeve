@@ -108,6 +108,25 @@ enclosing-transaction warning, which gains a sentence; `IsolatedRecorder` holds 
 the length of one insert. To measure before committing to SC-005: benchmark 0.5.0's ledger
 write and the chained write on each engine as the first implementation task.
 
+### Measured (T002, 2026-10-07, before any chain code)
+
+One uncontended `Recorder#record`, 1,000 samples after 100 warm-up writes, on a developer
+laptop (Apple Silicon, local databases):
+
+| Engine | Median | p95 |
+|---|---|---|
+| SQLite | 1.31 ms | 2.91 ms |
+| PostgreSQL 18 | 1.60 ms | 2.42 ms |
+| MySQL | not yet measured | |
+
+MySQL is pending: the local install does not start (a Homebrew library mismatch, nothing to
+do with this gem), so it is measured by the informational benchmark step added to the CI
+`database` job, on the first push of this branch.
+
+**SC-005 stands.** Chaining adds three statements, all on one indexed row, plus an HMAC
+measured in microseconds. Against a baseline of about 1.5 ms, 5 ms of headroom is
+realistic without being slack. T029 reruns this with chaining on.
+
 ## R4. Genesis lives in the chain record (spec amended)
 
 **Decision**: the genesis is link 0, stored on the chain record: `genesis_at`,

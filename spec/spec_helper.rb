@@ -27,6 +27,11 @@ RSpec.configure do |config|
   config.order = :random
   Kernel.srand config.seed
 
+  # Benchmarks measure; they do not assert a budget, and on shared CI hardware they would
+  # only add minutes and noise. Run them on purpose: `bundle exec rspec --tag benchmark`.
+  # An explicit `--tag benchmark` overrides this low-priority exclusion.
+  config.filter_run_excluding :benchmark
+
   # Configuration is process-wide; no example may leak into the next.
   config.before do
     Reeve.reset_configuration!

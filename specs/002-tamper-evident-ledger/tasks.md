@@ -25,13 +25,15 @@ SQLite locally and on PostgreSQL and MySQL in CI (`DB=` harness,
 
 **Purpose**: Measure before building, so SC-005 is a number rather than a hope.
 
-- [ ] T001 Add a `:benchmark` exclusion filter to `spec/spec_helper.rb` so tagged examples
+- [x] T001 Add a `:benchmark` exclusion filter to `spec/spec_helper.rb` so tagged examples
       run only with `--tag benchmark`
-- [ ] T002 Write `spec/reeve/audit/chain/benchmark_spec.rb` (tagged `:benchmark`): median and
+- [x] T002 Write `spec/reeve/audit/chain/benchmark_spec.rb` (tagged `:benchmark`): median and
       p95 of 1,000 uncontended `Reeve::Audit::Recorder#record` calls on the current (0.5.0)
       code. Run it on SQLite locally and on PostgreSQL and MySQL. Record the numbers under a
       new "Measured" heading in research.md R3. If 5 ms on top of that baseline is
-      unrealistic, revise SC-005 in spec.md now and say why, rather than miss it later
+      unrealistic, revise SC-005 in spec.md now and say why, rather than miss it later.
+      DONE for SQLite and PostgreSQL (research.md R3 "Measured"); SC-005 stands. MySQL runs
+      in the CI `database` job's benchmark step on the first push
 
 **Checkpoint**: baseline recorded; SC-005 confirmed or revised.
 

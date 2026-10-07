@@ -78,6 +78,15 @@ jobs:
           DB_PASSWORD: reeve
           DB_PORT: ${{ matrix.db == 'postgresql' && '5432' || '3306' }}
         run: bundle exec rspec
+      # Informational: prints the cost of one ledger write on this engine, so the chained
+      # write is compared against a measured baseline (specs/002 SC-005). Shared runners
+      # are noisy, so it asserts no budget and cannot fail the build on timing alone.
+      - name: Benchmark the ledger write
+        env:
+          DB_USERNAME: ${{ matrix.db == 'postgresql' && 'reeve' || 'root' }}
+          DB_PASSWORD: reeve
+          DB_PORT: ${{ matrix.db == 'postgresql' && '5432' || '3306' }}
+        run: bundle exec rspec --tag benchmark
 
   rubocop:
     name: rubocop
