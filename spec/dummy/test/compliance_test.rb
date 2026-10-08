@@ -39,6 +39,9 @@ Reeve.configure do |config|
   # like before it is guarded. The suite now reports unguarded tools, so the app says
   # which ones it is certifying rather than letting one demo tool redden every check.
   config.compliance_tools = -> { Reeve.registry.tool_classes - [LegacyExportTool] }
+  # The line the generated initializer carries (specs/002 FR-021). Without a key, a
+  # contract-3 ledger fails every guarded call closed.
+  config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)
 end
 require "reeve/audit"
 require_relative "../app/tools"

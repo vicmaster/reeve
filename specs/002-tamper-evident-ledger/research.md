@@ -128,6 +128,10 @@ CI `database` job, run 37687835913.
 measured in microseconds. Against a baseline of about 1.5 ms, 5 ms of headroom is
 realistic without being slack. T029 reruns this with chaining on.
 
+**With chaining (T029, same laptop, two runs each):** SQLite median 1.76–1.91 ms (+0.5 ms),
+PostgreSQL median 2.46–2.61 ms (+0.9 ms). Well inside SC-005. T054 measures again on all
+three engines before release.
+
 ## R4. Genesis lives in the chain record (spec amended)
 
 **Decision**: the genesis is link 0, stored on the chain record: `genesis_at`,

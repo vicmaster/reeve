@@ -48,6 +48,20 @@ RSpec.describe Reeve::Audit::IsolatedRecorder do
       expect(only_entry.tool_name).to eq("InvoiceSearchTool")
     end
 
+    # specs/002 T027 / FR-006: the row survives the host's rollback, and so does its link.
+    # The chain record lives on the same isolated connection as the row, so the head moved
+    # with it — the chain is consistent, not merely non-empty.
+    it "chains the row it keeps, on its own connection, through the host's rollback" do
+      ActiveRecord::Base.transaction do
+        2.times { invoke(recorder: described_class) { [] } }
+        raise ActiveRecord::Rollback
+      end
+
+      expect(entries.pluck(:chain_sequence)).to eq([1, 2])
+      expect(Reeve::Audit::ChainRecord.ledger.head_sequence).to eq(2)
+      expect(Reeve::Audit::Chain.verify.status).to eq(:intact)
+    end
+
     # Same scenario, default recorder, so the difference is asserted rather than assumed.
     it "is the difference: the default recorder loses that row" do
       ActiveRecord::Base.transaction do

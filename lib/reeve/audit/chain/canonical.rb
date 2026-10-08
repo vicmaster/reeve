@@ -6,7 +6,7 @@ require "openssl"
 
 module Reeve
   module Audit
-    module Chain
+    class Chain
       # The exact text a digest is computed over (specs/002 FR-002, FR-003; research R1, R2
       # step 2; data-model "Canonical entry").
       #

@@ -142,7 +142,7 @@ every break is reported with its sequence and kind.
 
 ### Tests first
 
-- [ ] T020 [P] [US1] Write `spec/reeve/audit/chain/append_spec.rb`. Cover:
+- [x] T020 [P] [US1] Write `spec/reeve/audit/chain/append_spec.rb`. Cover:
       - sequences run 1..n with no gaps;
       - each row carries the signing key id and a digest that links to its predecessor;
       - the first append creates the chain record (genesis, `pre_chain_count`) atomically;
@@ -155,18 +155,18 @@ every break is reported with its sequence and kind.
       - the genesis records `pre_chain_count` and `pre_chain_unchained_count`;
       - a host-supplied recorder that builds its own row and calls `Chain#append!` produces
         rows that verify intact (FR-007)
-- [ ] T021 [P] [US1] Write `spec/reeve/audit/chain/verifier_spec.rb` (walk only): intact over
+- [x] T021 [P] [US1] Write `spec/reeve/audit/chain/verifier_spec.rb` (walk only): intact over
       1..n; keyset pagination in batches of 1,000 (assert the batch size, not wall time);
       stops at the head read at start, even while another connection keeps appending; rows
       committed during the walk (between the two head reads) are not reported; a chained row
       above the head re-read at the end is reported as `beyond_head`; opens no long
       transaction
-- [ ] T022 [P] [US1] Write `spec/reeve/audit/chain/concurrency_spec.rb`. On PostgreSQL and
+- [x] T022 [P] [US1] Write `spec/reeve/audit/chain/concurrency_spec.rb`. On PostgreSQL and
       MySQL, 8 threads × 1,000 invocations through `Recorder`, then 8 × 1,000 through
       `IsolatedRecorder`, each give sequences 1–8,000 with no gaps, no duplicates, no
       deadlock, and verify intact (SC-003). SQLite runs a reduced 4 × 100 through
       `Recorder`
-- [ ] T023 [P] [US1] Write `spec/reeve/audit/chain/tamper_spec.rb` for the spec's "Detected"
+- [x] T023 [P] [US1] Write `spec/reeve/audit/chain/tamper_spec.rb` for the spec's "Detected"
       list, each case through raw SQL that bypasses the model:
       - an edited value → `digest_mismatch` at that sequence;
       - a deleted middle row → `missing` plus `digest_mismatch` on the next row;
@@ -180,7 +180,7 @@ every break is reported with its sequence and kind.
       - three independent breaks → all three reported, with complete totals.
 
       Verify each example red by disabling the corresponding check in the verifier
-- [ ] T024 [P] [US1] Write `spec/reeve/audit/chain/restore_spec.rb`: dump the ledger and
+- [x] T024 [P] [US1] Write `spec/reeve/audit/chain/restore_spec.rb`: dump the ledger and
       chain tables with the engine's own tool (`sqlite3 .dump`, `pg_dump`, `mysqldump`),
       restore into a fresh database with the primary keys renumbered, and verify intact
       (SC-002). In CI, run the server's own client through the service container (`docker
@@ -190,26 +190,26 @@ every break is reported with its sequence and kind.
 
 ### Implementation
 
-- [ ] T025 [US1] Implement `lib/reeve/audit/chain.rb` `Chain#append!(row)` per research R3:
+- [x] T025 [US1] Implement `lib/reeve/audit/chain.rb` `Chain#append!(row)` per research R3:
       update first, then read, compute the digest, insert, advance the head digest, all in
       one savepoint on `entry_class.connection`. On 0 rows updated, create the chain record
       with its genesis (both pre-chain counts), retrying the update once if the unique `name`
       index loses the race. Require the new `chain/*` files and `chain_record.rb` from
       `lib/reeve/audit.rb`
-- [ ] T026 [US1] Route `lib/reeve/audit/recorder.rb` through the normalizer and
+- [x] T026 [US1] Route `lib/reeve/audit/recorder.rb` through the normalizer and
       `Chain#append!`, keeping the replay semantics. Extend the enclosing-transaction
       warning: under a host transaction the chain lock is held until that transaction
       commits, and `IsolatedRecorder` is the answer. Extend
       `spec/reeve/audit/recorder_spec.rb`
-- [ ] T027 [P] [US1] Prove in `spec/reeve/audit/isolated_recorder_spec.rb` that chained writes
+- [x] T027 [P] [US1] Prove in `spec/reeve/audit/isolated_recorder_spec.rb` that chained writes
       run on the isolated connection and survive a host rollback (PostgreSQL and MySQL).
       Update the class comment in `lib/reeve/audit/isolated_recorder.rb`: the chain lock is
       held for one insert
-- [ ] T028 [US1] Implement `lib/reeve/audit/chain/verifier.rb` (research R6) and the result
+- [x] T028 [US1] Implement `lib/reeve/audit/chain/verifier.rb` (research R6) and the result
       structure in `lib/reeve/audit/chain/verification.rb` (`status`, `covered`, `totals`,
       `breaks`, `head_at_start`, `head_at_end`, `Break`), including the second head read and
       the `beyond_head` scan. Expose `Reeve::Audit::Chain.verify(keys: nil)`
-- [ ] T029 [US1] Run T020–T024 green on all three engines; make the T002 benchmark cover the
+- [x] T029 [US1] Run T020–T024 green on all three engines; make the T002 benchmark cover the
       chained write too
 
 **Checkpoint**: US1 complete. Chained writes and detection work, but the statuses are not

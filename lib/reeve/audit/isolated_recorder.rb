@@ -34,6 +34,11 @@ module Reeve
     # and it also survives a rollback of an invocation the host *meant* to undo entirely.
     # A ledger of what was attempted is the intended reading of Constitution II, but it is
     # a choice, and it should be made rather than inherited.
+    #
+    # It is also the answer to the chain's one real cost (specs/002). Every chained write
+    # locks the ledger's chain record; under Recorder inside a host transaction that lock is
+    # held until the host commits, so every other guarded call waits behind it. Here the
+    # chain record is written on this connection too, and the lock is held for one insert.
     class IsolatedRecorder < Recorder
       UNSUPPORTED_ADAPTERS = %w[sqlite sqlite3].freeze
 

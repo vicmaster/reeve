@@ -110,7 +110,8 @@ lib/reeve/audit/chain.rb                       # NEW: Chain#append!, Chain.verif
 lib/reeve/audit/chain/keyring.rb               # NEW: fingerprints, lookup by key id
 lib/reeve/audit/chain/normalizer.rb            # NEW: pre-write JSON/time normalization (R2)
 lib/reeve/audit/chain/canonical.rb             # NEW: canonical form + digest (R1, R2)
-lib/reeve/audit/chain/verifier.rb              # NEW: keyset walk (R6)
+lib/reeve/audit/chain/verifier.rb              # NEW: record, head, genesis and unchained checks (R6)
+lib/reeve/audit/chain/walk.rb                  # NEW: the keyset row-by-row walk, split from the verifier
 lib/reeve/audit/chain/verification.rb          # NEW: result, Break, to_s, as_json
 lib/reeve/audit/chain_record.rb                # NEW: model for reeve_audit_chains
 lib/reeve/audit/recorder.rb                    # writes through Chain; :warn/no-key path; column check

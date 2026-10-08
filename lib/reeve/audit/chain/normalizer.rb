@@ -2,7 +2,7 @@
 
 module Reeve
   module Audit
-    module Chain
+    class Chain
       # Puts a row into the form the database will hand back, before it is written
       # (specs/002 FR-003, research R2 step 1).
       #
@@ -76,7 +76,8 @@ module Reeve
 
         def precision
           @precision ||= self.class.effective_precision(
-            entry_class.columns_hash.fetch(TIME_FIELD.to_s), entry_class.connection.adapter_name
+            entry_class.columns_hash.fetch(TIME_FIELD.to_s),
+            entry_class.connection_db_config.adapter
           )
         end
       end

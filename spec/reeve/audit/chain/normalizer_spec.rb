@@ -68,16 +68,16 @@ RSpec.describe Reeve::Audit::Chain::Normalizer do
     end
 
     it "uses the precision the column declares" do
-      expect(described_class.effective_precision(column(3), "PostgreSQL")).to eq(3)
+      expect(described_class.effective_precision(column(3), "postgresql")).to eq(3)
     end
 
     # A MySQL DATETIME declared without precision is whole seconds, and the server rounds
     # rather than truncates a fraction sent to it. The other engines keep microseconds.
     it "treats an undeclared precision as 0 on MySQL and 6 elsewhere" do
-      expect(described_class.effective_precision(column(nil), "Mysql2")).to eq(0)
-      expect(described_class.effective_precision(column(nil), "Trilogy")).to eq(0)
-      expect(described_class.effective_precision(column(nil), "PostgreSQL")).to eq(6)
-      expect(described_class.effective_precision(column(nil), "SQLite")).to eq(6)
+      expect(described_class.effective_precision(column(nil), "mysql2")).to eq(0)
+      expect(described_class.effective_precision(column(nil), "trilogy")).to eq(0)
+      expect(described_class.effective_precision(column(nil), "postgresql")).to eq(6)
+      expect(described_class.effective_precision(column(nil), "sqlite3")).to eq(6)
     end
   end
 

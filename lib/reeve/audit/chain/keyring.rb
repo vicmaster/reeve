@@ -2,7 +2,7 @@
 
 module Reeve
   module Audit
-    module Chain
+    class Chain
       # The keys one chained write or one verification may use (specs/002 FR-011, R7).
       #
       # One key signs; any number verify. Rows name their key by fingerprint, so lookup is

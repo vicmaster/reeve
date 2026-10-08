@@ -10,9 +10,10 @@ module Reeve
     # ActiveJob. An asynchronous ledger cannot be relied on and would make FR-012
     # unenforceable.
     #
-    # The insert runs in `requires_new: true`, which is what makes the trace survive a
-    # tool body that opens a transaction and rolls it back (R5) — the case this was built
-    # for, and the one it does solve.
+    # Every row goes through Chain#append! (specs/002), which links it to the row before it
+    # and runs the insert in `requires_new: true` — what makes the trace survive a tool body
+    # that opens a transaction and rolls it back (R5), the case this was built for and the
+    # one it does solve.
     #
     # What it does **not** do, corrected after review: `requires_new` is a SAVEPOINT, not
     # an independent transaction. If the host has already opened a transaction *around*
@@ -54,20 +55,15 @@ module Reeve
 
       # Returns the entry. Raises if the row could not be written, so the envelope can
       # fail the invocation.
+      #
+      # A replayed invocation is the same invocation: one row per invocation_id means a
+      # retry returns the existing row and never writes a second (contracts/audit-entry.md).
+      # Chain#append! owns that, because it must also consume no sequence number.
       def record(attributes)
         row = row_for(attributes)
         warn_about_enclosing_transaction(row[:invocation_id])
 
-        entry_class.transaction(requires_new: true) do
-          entry_class.create!(row)
-        end
-      rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
-        # A replayed invocation is the same invocation. One row per invocation_id means
-        # a retry is a no-op insert, never a second row (contracts/audit-entry.md).
-        existing = entry_class.find_by(invocation_id: row[:invocation_id])
-        raise e if existing.nil?
-
-        existing
+        Chain.new(entry_class: entry_class).append!(row)
       end
 
       private
@@ -165,9 +161,10 @@ module Reeve
 
         message = "reeve: invocation #{invocation_id} was recorded inside a transaction " \
                   "the host opened around it, so the ledger row will be rolled back with " \
-                  "it. Set Reeve.config.audit_recorder = Reeve::Audit::IsolatedRecorder " \
-                  "to write on a connection the transaction cannot reach (needs a " \
-                  "database with concurrent writers; not SQLite)."
+                  "it, and the ledger chain stays locked until it ends, so every other " \
+                  "guarded call waits behind it. Set Reeve.config.audit_recorder = " \
+                  "Reeve::Audit::IsolatedRecorder to write on a connection the transaction " \
+                  "cannot reach (needs a database with concurrent writers; not SQLite)."
         logger = config.logger
         logger ? logger.warn(message) : Kernel.warn(message)
       end

@@ -103,5 +103,9 @@ require_relative "audit/chain/keyring"
 require_relative "audit/chain/normalizer"
 require_relative "audit/chain/canonical"
 require_relative "audit/chain_record"
+require_relative "audit/chain/verification"
+require_relative "audit/chain/walk"
+require_relative "audit/chain/verifier"
+require_relative "audit/chain"
 
 Reeve::Audit.install!

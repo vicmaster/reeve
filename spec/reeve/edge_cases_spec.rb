@@ -220,6 +220,9 @@ RSpec.describe "edge cases" do
     it "does the same amount of work either way, through the safe path" do
       # A timing assertion would be flaky; query count is the deterministic proxy.
       tool("SafeCountedTool") { |id:| scoped(Invoice).find_by(id: id) }
+      # The first write to a fresh ledger also starts the chain (specs/002), whichever
+      # record it asked for. That is order, not existence, so it is paid before measuring.
+      Reeve.invoke(tool: SafeCountedTool, arguments: { id: 0 }, principal: alice)
 
       existing = count_queries do
         Reeve.invoke(tool: SafeCountedTool, arguments: { id: @theirs.id }, principal: alice)
