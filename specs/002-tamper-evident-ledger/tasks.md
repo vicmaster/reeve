@@ -85,39 +85,42 @@ before anything depends on it.
 
 ### Schema
 
-- [ ] T012 Update `lib/generators/reeve/install/templates/create_audit_entries.rb.tt` to
+- [x] T012 Update `lib/generators/reeve/install/templates/create_audit_entries.rb.tt` to
       contract 3. Add `chain_sequence` (bigint), `chain_key_id` (string, limit 16) and
       `chain_digest` (string, limit 64), all nullable, with a unique index on
       `chain_sequence`. Create `reeve_audit_chains` per data-model.md, with a unique index
       on `name`. Replace the header comment's "no cryptographic chaining" paragraph and add
       the grants per contracts/audit-entry-v3.md. **Keep the template free of ERB**:
       `spec/reeve/audit/support/ledger.rb` evaluates it directly
-- [ ] T013 Update `spec/reeve/audit/migration_spec.rb` for the new columns, both unique
+- [x] T013 Update `spec/reeve/audit/migration_spec.rb` for the new columns, both unique
       indexes and the new table, on all three engines. Confirm that NULL `chain_sequence`
       values do not collide under the unique index
-- [ ] T014 [P] Write `spec/reeve/audit/chain_record_spec.rb`, then implement
+- [x] T014 [P] Write `spec/reeve/audit/chain_record_spec.rb`, then implement
       `lib/reeve/audit/chain_record.rb`: genesis columns `attr_readonly`, `destroy`
       aborts, no public method that advances the head
-- [ ] T015 Write `spec/reeve/audit/chain/roundtrip_spec.rb`. Insert the awkward-value corpus
+- [x] T015 Write `spec/reeve/audit/chain/roundtrip_spec.rb`. Insert the awkward-value corpus
       (research R2 "Test strategy") through the normalizer into the real table, read every
       row back, and assert the canonical form is byte-identical before and after on each
       engine (SC-002). **Gate: green on the PostgreSQL and MySQL CI jobs before Phase 3
       starts.** Also add the known-limit example: an integer beyond double precision on
-      MySQL fails to round-trip, documented in the example's description
-- [ ] T016 Move the contract to 3: `CONTRACT_VERSION` in `lib/reeve/audit.rb`, and
+      MySQL fails to round-trip, documented in the example's description. DONE, plus a
+      `jsonb` copy of the table on PostgreSQL (`t.json` is PostgreSQL's `json`, which keeps
+      text as written, so `jsonb` is the case the canonical form exists for). Mutation-checked:
+      key sorting and the JSON round trip are caught on jsonb
+- [x] T016 Move the contract to 3: `CONTRACT_VERSION` in `lib/reeve/audit.rb`, and
       `EXPECTED_VERSION` and `COLUMNS` in `lib/reeve/testing/checks/contract_version.rb`,
       both by hand as that file requires. Update `spec/reeve/audit/contract_version_spec.rb`
-- [ ] T017 Give every ledger-writing spec a fixed test key: configure `ledger_key` after each
+- [x] T017 Give every ledger-writing spec a fixed test key: configure `ledger_key` after each
       `Reeve.reset_configuration!` in `spec/reeve/audit/support/ledger.rb`,
       `spec/reeve/audit/support/envelope.rb` and `spec/reeve/testing/support/fixtures.rb`.
       Without it, the existing 577 examples fail closed once chaining lands. Add the same
       derived `ledger_key` line the initializer template carries to the hand-written
       `Reeve.configure` block in `spec/dummy/quickstart.rb`, which mirrors the template. Confirm
       the full suite is still green on SQLite
-- [ ] T018 [P] Extend `spec/reeve/generators/install_generator_spec.rb`: the
+- [x] T018 [P] Extend `spec/reeve/generators/install_generator_spec.rb`: the
       initializer contains the derived `ledger_key` line and the commented dedicated-key
       alternative, and no key value
-- [ ] T019 Add the `ledger_key` line, the dedicated-key alternative and the rotation
+- [x] T019 Add the `ledger_key` line, the dedicated-key alternative and the rotation
       warning to `lib/generators/reeve/install/templates/initializer.rb.tt`. It lands here,
       not in US3, because US1 makes every write need a key: from the first chained write
       onward, the quickstart and every checkpoint stay green only if the template already
@@ -272,12 +275,14 @@ uncovered.
 
 ### Tests first
 
-- [ ] T035 [P] [US3] Extend `spec/reeve/generators/upgrade_generator_spec.rb`:
+- [x] T035 [P] [US3] Extend `spec/reeve/generators/upgrade_generator_spec.rb`:
       - contract-2 table → emits only the contract-3 migration; running it again → nothing
         to do;
       - contract-1 table → both steps, oldest first;
       - the output prints the `ledger_key` line, the `secret_key_base` rotation warning and
         the large-ledger index note
+      PULLED FORWARD into Phase 2: once T012 puts the install template at contract 3,
+      the existing convergence spec (fresh install == upgraded table) needs this step
 - [ ] T036 [P] [US3] Extend `spec/reeve/audit/failure_mode_spec.rb` with the no-key matrix
       from contracts/ledger-chain.md "Writing":
       - `:fail` → `AuditWriteError`, cause `LedgerKeyError`;
@@ -295,12 +300,13 @@ uncovered.
 
 ### Implementation
 
-- [ ] T038 [US3] Add `lib/generators/reeve/upgrade/templates/add_ledger_chain_to_reeve_audit_entries.rb.tt`
+- [x] T038 [US3] Add `lib/generators/reeve/upgrade/templates/add_ledger_chain_to_reeve_audit_entries.rb.tt`
       (three nullable columns, the unique index, the chain table, and the grants comment).
       Add the contract-3 entry to `STEPS` in
       `lib/generators/reeve/upgrade/upgrade_generator.rb`; its applied-check must also
       require `reeve_audit_chains`. Extend `pending_message` with the initializer line, the
       rotation warning and the `algorithm: :concurrently` note
+      PULLED FORWARD with T035, for the same reason
 - [ ] T039 [US3] In `lib/reeve/audit/recorder.rb`, implement:
       - the once-per-process column check, raising `ConfigurationError`;
       - the no-key behaviour: under `:fail` raise `LedgerKeyError` (the envelope wraps it);
@@ -369,6 +375,8 @@ against each US2 ledger.
       `specs/001-guardrails-core/contracts/testing-kit.md`. Add the `ledger_key` step to
       `specs/001-guardrails-core/quickstart.md`, which `spec/dummy/quickstart.rb` claims to
       follow step by step
+      PARTLY DONE in Phase 2: the audit-entry.md change landed with T016, because
+      `contract_version_spec.rb` ties the constant to the version that document states
 - [ ] T050 [P] Rewrite the "What it does not" section of `lib/reeve/audit.rb` per
       audit-entry-v3.md. Then `grep -rn "cryptographic chaining" lib/ specs/ README.md` and
       fix every remaining claim that chaining does not exist

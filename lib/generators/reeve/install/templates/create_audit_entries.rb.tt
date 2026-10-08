@@ -13,12 +13,23 @@
 #   REVOKE ALL   ON reeve_audit_entries FROM app_role;
 #   GRANT INSERT, SELECT ON reeve_audit_entries TO app_role;
 #   GRANT USAGE  ON SEQUENCE reeve_audit_entries_id_seq TO app_role;
+#   -- the chain record: its head moves on every write
+#   GRANT INSERT, SELECT, UPDATE ON reeve_audit_chains TO app_role;
+#   GRANT USAGE  ON SEQUENCE reeve_audit_chains_id_seq TO app_role;
+#
+# Every row is chained to the one before it with a keyed digest (audit-entry contract 3),
+# so a row changed, removed or reordered outside reeve is reported by
+# `bin/rails reeve:verify_ledger`. That is tamper-evidence, not tamper-proofing: it
+# detects a change after the fact and prevents nothing — the grant above is what
+# prevents. It does not detect a change made by someone holding the ledger key, nor the
+# newest rows being deleted by a role that can also rewind the head in
+# reeve_audit_chains; that role needs UPDATE there, which is why the chain table is
+# granted separately from the ledger.
 #
 # Also explicitly out of scope for now, so you can plan around it:
 #   * no retention, rotation or archival — this table grows until you prune it, and
-#     pruning is your policy, run by a role that is allowed to delete;
-#   * no cryptographic chaining or tamper-evidence. If that lands later it arrives as a
-#     nullable column, which the audit-entry contract's versioning already permits.
+#     pruning is your policy, run by a role that is allowed to delete. Deleting rows
+#     breaks the chain by design.
 #
 # `invocation_id` is a UUID stored as a string rather than a native `uuid` column,
 # because reeve supports every database ActiveRecord does and only PostgreSQL has the
@@ -61,6 +72,13 @@ class CreateReeveAuditEntries < ActiveRecord::Migration[7.0]
       # it means "the caller passed none". Stamping each row keeps an export readable
       # across an upgrade instead of collapsing that distinction.
       t.integer  :contract_version, null: false
+
+      # The chain (contract 3). Nullable: a row written before the chain began has no
+      # honest value for these, and nothing is backfilled into an append-only table.
+      # `chain_key_id` is the key's fingerprint, never the key.
+      t.bigint   :chain_sequence
+      t.string   :chain_key_id,   limit: 16
+      t.string   :chain_digest,   limit: 64
     end
 
     add_index :reeve_audit_entries, :invocation_id, unique: true
@@ -73,5 +91,25 @@ class CreateReeveAuditEntries < ActiveRecord::Migration[7.0]
     add_index :reeve_audit_entries, %i[tool_name occurred_at]
     add_index :reeve_audit_entries, %i[agent_id occurred_at]
     add_index :reeve_audit_entries, %i[outcome occurred_at]
+
+    # One position, one row. NULLs are distinct, so unchained rows never collide; the
+    # index also orders the walk `reeve:verify_ledger` makes.
+    add_index :reeve_audit_entries, :chain_sequence, unique: true
+
+    # The chain record: one row. The genesis columns are written once, when the first
+    # chained entry is; the head moves with every chained write, in the same transaction
+    # as the row it points at.
+    create_table :reeve_audit_chains do |t|
+      t.string   :name,                      null: false
+      t.datetime :genesis_at,                null: false, precision: 6
+      t.bigint   :pre_chain_count,           null: false
+      t.bigint   :pre_chain_unchained_count, null: false
+      t.string   :genesis_key_id,            null: false, limit: 16
+      t.string   :genesis_digest,            null: false, limit: 64
+      t.bigint   :head_sequence,             null: false
+      t.string   :head_digest,               null: false, limit: 64
+    end
+
+    add_index :reeve_audit_chains, :name, unique: true
   end
 end

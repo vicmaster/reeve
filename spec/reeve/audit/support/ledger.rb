@@ -64,6 +64,7 @@ module Ledger
 
     def clean!
       Reeve::Audit::Entry.delete_all
+      ActiveRecord::Base.connection.delete("DELETE FROM reeve_audit_chains")
       scratch.delete_all
     end
 
@@ -96,6 +97,16 @@ RSpec.shared_context "with a ledger table" do
   before { Ledger.prepare! }
 end
 
+# A fixed key for every example that can write the ledger (specs/002 T017). From contract
+# 3 a write without a key fails closed — the right behaviour for a host, and the wrong one
+# for 600 examples that are about something else. Set after spec_helper resets the
+# configuration, which is why it is a hook here rather than a constant there. Specs that
+# exercise the missing-key path unset it themselves.
+module Ledger
+  TEST_KEY = "reeve-spec-ledger-key-not-a-secret-0123456789"
+end
+
 RSpec.configure do |config|
   config.include_context "with a ledger table", ledger: true
+  config.before { Reeve.config.ledger_key = Ledger::TEST_KEY }
 end

@@ -72,6 +72,26 @@ Reeve.configure do |config|
   #
   # Left unset, which resolves to Reeve::Audit::Recorder.
 
+  # ---------------------------------------------------------------------------
+  # The key that chains the audit ledger, so a row changed, removed or reordered
+  # outside reeve is reported by `bin/rails reeve:verify_ledger`. It must live
+  # outside the database: someone who can write the table but does not hold the
+  # key cannot forge the chain.
+  #
+  # Derived from secret_key_base, it works in every environment — test included —
+  # with no new secret to provision. Without a key, every guarded call fails
+  # closed (or, under audit_failure_mode :warn, is recorded unchained).
+  config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)
+
+  # Rotating secret_key_base rotates this key too. Keep the old one here, or the
+  # entries it signed become unverifiable (reported as such, never as tampered):
+  #
+  #   config.retired_ledger_keys = [old_key]
+  #
+  # Or use a dedicated key, so secret_key_base can rotate on its own schedule:
+  #
+  #   config.ledger_key = Rails.application.credentials.reeve_ledger_key
+
   # Cap on how many record identifiers one entry stores. The true count is
   # always recorded, and the entry says when the list was truncated.
   config.max_recorded_ids = 1000

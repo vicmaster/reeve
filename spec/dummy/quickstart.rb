@@ -58,6 +58,7 @@ Reeve.configure do |config|
   config.unguarded_tools    = :deny
   config.redact_arguments   = %i[password token ssn]
   config.compliance_principals = -> { [User.first, User.last] }
+  config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)
 end
 require "reeve/audit"
 

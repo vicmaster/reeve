@@ -54,6 +54,25 @@ RSpec.describe "reeve:install generator", if: rails_available do
       expect(initializer).to include(":allow_with_warning")
     end
 
+    # specs/002 FR-021: a key that works in every environment, the test one included, with
+    # no new secret — and never a key value written into the application's source.
+    it "configures a ledger key derived from secret_key_base, and shows the dedicated-key line" do
+      initializer = read("config/initializers/reeve.rb")
+
+      expect(initializer).to include(
+        'config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)'
+      )
+      expect(initializer).to match(/^\s*#\s*config\.ledger_key = Rails\.application\.credentials/)
+      expect(initializer).to match(/rotat\w+ secret_key_base/i)
+      expect(initializer).to include("retired_ledger_keys")
+    end
+
+    it "embeds no key value" do
+      initializer = read("config/initializers/reeve.rb")
+
+      expect(initializer).not_to match(/ledger_key\s*=\s*["'][^"']{16,}["']/)
+    end
+
     it "says what happens before the resolver is filled in" do
       expect(read("config/initializers/reeve.rb")).to match(/no_principal/)
     end
@@ -68,14 +87,20 @@ RSpec.describe "reeve:install generator", if: rails_available do
       # setting that exists, with a value the setter accepts. Rails.logger stands in for
       # the boot-time constant the initializer legitimately expects.
       logger = Class.new { def warn(message); end }.new
-      stub_const("Rails", Module.new { def self.logger = nil })
-      allow(Rails).to receive(:logger).and_return(logger)
+      key_generator = Class.new { def generate_key(_salt, length) = "k" * length }.new
+      application = Struct.new(:key_generator).new(key_generator)
+      stub_const("Rails", Module.new do
+        def self.logger = nil
+        def self.application = nil
+      end)
+      allow(Rails).to receive_messages(logger: logger, application: application)
       Reeve.reset_configuration!
       expect { eval(read("config/initializers/reeve.rb")) }.not_to raise_error # rubocop:disable Security/Eval
       expect(Reeve.config.unguarded_tools).to eq(:deny)
       expect(Reeve.config.logger).to eq(logger)
       expect(Reeve.config.audit_failure_mode).to eq(:fail)
       expect(Reeve.config.redact_arguments).to include(:password, :ssn)
+      expect(Reeve.config.ledger_key).to eq("k" * 32)
     end
   end
 
@@ -91,6 +116,7 @@ RSpec.describe "reeve:install generator", if: rails_available do
       load migration_path
       connection = ActiveRecord::Base.connection
       connection.drop_table(:reeve_audit_entries, if_exists: true)
+      connection.drop_table(:reeve_audit_chains, if_exists: true)
 
       CreateReeveAuditEntries.new.migrate(:up)
 
@@ -104,6 +130,7 @@ RSpec.describe "reeve:install generator", if: rails_available do
       load migration_path
       connection = ActiveRecord::Base.connection
       connection.drop_table(:reeve_audit_entries, if_exists: true)
+      connection.drop_table(:reeve_audit_chains, if_exists: true)
 
       CreateReeveAuditEntries.new.migrate(:up)
       CreateReeveAuditEntries.new.migrate(:down)
