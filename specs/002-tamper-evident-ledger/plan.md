@@ -101,6 +101,8 @@ specs/002-tamper-evident-ledger/
 lib/reeve.rb                                   # + require railtie when Rails::Railtie is defined
 lib/reeve/configuration.rb                     # + ledger_key, retired_ledger_keys, ledger_key_id
 lib/reeve/errors.rb                            # + LedgerKeyError
+lib/reeve/ledger_key.rb                        # NEW: key validation + fingerprint (openssl loaded lazily, so
+                                               #      `require "reeve"` keeps its stdlib allowlist)
 lib/reeve/railtie.rb                           # NEW: registers tasks only
 lib/reeve/tasks.rb                             # NEW: reeve:verify_ledger (Ruby, not .rake — R9)
 lib/reeve/audit.rb                             # CONTRACT_VERSION 3; "what it does not" rewritten

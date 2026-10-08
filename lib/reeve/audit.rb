@@ -94,5 +94,8 @@ require_relative "audit/entry"
 require_relative "audit/recorder"
 require_relative "audit/isolated_recorder"
 require_relative "audit/query"
+require_relative "audit/chain/keyring"
+require_relative "audit/chain/normalizer"
+require_relative "audit/chain/canonical"
 
 Reeve::Audit.install!

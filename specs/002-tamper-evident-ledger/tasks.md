@@ -32,8 +32,8 @@ SQLite locally and on PostgreSQL and MySQL in CI (`DB=` harness,
       code. Run it on SQLite locally and on PostgreSQL and MySQL. Record the numbers under a
       new "Measured" heading in research.md R3. If 5 ms on top of that baseline is
       unrealistic, revise SC-005 in spec.md now and say why, rather than miss it later.
-      DONE for SQLite and PostgreSQL (research.md R3 "Measured"); SC-005 stands. MySQL runs
-      in the CI `database` job's benchmark step on the first push
+      DONE on all three engines (research.md R3 "Measured"; MySQL from the CI `database`
+      job's benchmark step). SC-005 stands
 
 **Checkpoint**: baseline recorded; SC-005 confirmed or revised.
 
@@ -47,32 +47,32 @@ before anything depends on it.
 
 ### Configuration and keys
 
-- [ ] T003 [P] Write specs in `spec/reeve/configuration_spec.rb` for `ledger_key` and
+- [x] T003 [P] Write specs in `spec/reeve/configuration_spec.rb` for `ledger_key` and
       `retired_ledger_keys` per the table in contracts/ledger-chain.md. Cover: nil allowed;
       blank or < 32 bytes raises `ArgumentError` on assignment; a retired key equal to
       `ledger_key` raises; `ledger_key_id` is 16 hex characters and stable; `to_h`,
       `inspect` and error messages never contain a secret
-- [ ] T004 Implement the two settings, their validation and `ledger_key_id` in
+- [x] T004 Implement the two settings, their validation and `ledger_key_id` in
       `lib/reeve/configuration.rb`. Add both to `SETTINGS`. Make `to_h` and `inspect`
       show fingerprints, never secrets
-- [ ] T005 [P] Add `Reeve::LedgerKeyError < Reeve::Error` to `lib/reeve/errors.rb`, with a
+- [x] T005 [P] Add `Reeve::LedgerKeyError < Reeve::Error` to `lib/reeve/errors.rb`, with a
       message naming `config.ledger_key` and the generated initializer line. Spec it in
       `spec/reeve/errors_spec.rb`
-- [ ] T006 [P] Write `spec/reeve/audit/chain/keyring_spec.rb`: the fingerprint is the first 16
+- [x] T006 [P] Write `spec/reeve/audit/chain/keyring_spec.rb`: the fingerprint is the first 16
       hex characters of `HMAC-SHA256(key, "reeve-ledger-key-id")`; `#signing` returns the
       current key and id; `#for(id)` finds current or retired keys and returns nil for an
       unknown id; `inspect` contains no secret
-- [ ] T007 Implement `lib/reeve/audit/chain/keyring.rb` (research R7)
+- [x] T007 Implement `lib/reeve/audit/chain/keyring.rb` (research R7)
 
 ### Canonical form (research R2)
 
-- [ ] T008 [P] Write `spec/reeve/audit/chain/normalizer_spec.rb`. Symbol keys become strings;
+- [x] T008 [P] Write `spec/reeve/audit/chain/normalizer_spec.rb`. Symbol keys become strings;
       a `Time` inside arguments renders as ActiveSupport's JSON renders it; `NaN` and
       `Infinity` become nil; `occurred_at` is floored, never rounded, to the column's
       effective precision as read from the schema (6 by default, 0 for a MySQL `datetime`
       with no precision); the precision lookup happens once per entry class
-- [ ] T009 Implement `lib/reeve/audit/chain/normalizer.rb`
-- [ ] T010 [P] Write `spec/reeve/audit/chain/canonical_spec.rb`. Cover: object keys sorted at
+- [x] T009 Implement `lib/reeve/audit/chain/normalizer.rb`
+- [x] T010 [P] Write `spec/reeve/audit/chain/canonical_spec.rb`. Cover: object keys sorted at
       every depth; `1.0e+20`, `100000000000000000000` and `1e20` canonicalize alike; `"1"`
       and `1` do not; nil is distinct from `{}` and `[]`; times become UTC integer
       microseconds regardless of `default_timezone`; the domain tags are
@@ -80,7 +80,7 @@ before anything depends on it.
       equals the order in data-model.md. Add a drift test: every `reeve_audit_entries`
       column except `id` and `chain_digest` appears in the written-out field list, so a
       future column cannot be silently left out of the digest
-- [ ] T011 Implement `lib/reeve/audit/chain/canonical.rb`: the canonical serializer, the
+- [x] T011 Implement `lib/reeve/audit/chain/canonical.rb`: the canonical serializer, the
       entry digest and the genesis digest (research R1, data-model "Canonical entry")
 
 ### Schema

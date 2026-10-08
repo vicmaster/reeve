@@ -70,6 +70,21 @@ module Reeve
     end
   end
 
+  # Raised when a chained ledger write or a verification has no key to use (specs/002
+  # FR-010). On the invocation path the envelope wraps it in AuditWriteError, exactly as it
+  # wraps any other ledger failure, so a host rescues one class either way.
+  class LedgerKeyError < Error
+    def initialize(message = nil)
+      super(message || <<~MESSAGE.chomp)
+        no ledger key is configured, so the audit ledger cannot be chained. Set one in
+        config/initializers/reeve.rb — derived from secret_key_base, it works in every
+        environment with no new secret:
+
+          config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)
+      MESSAGE
+    end
+  end
+
   # Raised when the ledger write fails and audit_failure_mode is :fail (FR-012).
   #
   # It carries a rule like any other denial, because the failure is not recorded anywhere

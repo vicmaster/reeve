@@ -117,11 +117,12 @@ laptop (Apple Silicon, local databases):
 |---|---|---|
 | SQLite | 1.31 ms | 2.91 ms |
 | PostgreSQL 18 | 1.60 ms | 2.42 ms |
-| MySQL | not yet measured | |
+| PostgreSQL 16 (CI runner) | 1.85 ms | 2.72 ms |
+| MySQL 8.4 (CI runner) | 1.45 ms | 2.32 ms |
 
-MySQL is pending: the local install does not start (a Homebrew library mismatch, nothing to
-do with this gem), so it is measured by the informational benchmark step added to the CI
-`database` job, on the first push of this branch.
+MySQL could not be measured locally (the Homebrew install does not start, a library
+mismatch unrelated to this gem), so it comes from the informational benchmark step in the
+CI `database` job, run 37687835913.
 
 **SC-005 stands.** Chaining adds three statements, all on one indexed row, plus an HMAC
 measured in microseconds. Against a baseline of about 1.5 ms, 5 ms of headroom is

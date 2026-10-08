@@ -2,6 +2,7 @@
 
 require_relative "reeve/version"
 require_relative "reeve/errors"
+require_relative "reeve/ledger_key"
 require_relative "reeve/decision"
 require_relative "reeve/configuration"
 require_relative "reeve/context"
