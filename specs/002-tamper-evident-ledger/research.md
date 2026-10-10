@@ -132,6 +132,22 @@ realistic without being slack. T029 reruns this with chaining on.
 PostgreSQL median 2.46–2.61 ms (+0.9 ms). Well inside SC-005. T054 measures again on all
 three engines before release.
 
+### Rails 7.0 and SQLite (found by CI on the Ruby 3.0 floor job, 2026-10-10)
+
+On ActiveRecord 7.0 with sqlite3 1.x, a thread waiting for SQLite's write lock waits in C
+*while holding Ruby's GVL*. The thread that holds the lock cannot run the Ruby that would
+commit, so the waiter fails after the full busy timeout. Reproduced without reeve: two
+threads and plain SQL. Thread B fails after 5.18 s on AR 7.0.10 / sqlite3 1.7.3, and writes
+after 0.5 s on AR 8.1.4 / sqlite3 2.9.6. Rails 7.1 replaced the wait with a busy handler
+that releases the GVL.
+
+The limit predates the chain; 0.5.0's single INSERT needs the same lock. The chain makes it
+likelier, because the lock is held for four statements instead of one. It is not worked
+around: a retry still freezes the process for the full timeout first. What is promised and
+pinned on that stack (concurrency_spec, Rails < 7.1) is that a contended write **fails
+closed** and the writes that land still form one gap-free, intact chain. The README states
+the limit (T051).
+
 ## R4. Genesis lives in the chain record (spec amended)
 
 **Decision**: the genesis is link 0, stored on the chain record: `genesis_at`,

@@ -385,7 +385,10 @@ against each US2 ledger.
       statuses; key rotation and the `secret_key_base` coupling; and the lock-contention
       note with `IsolatedRecorder` as the answer. The contention note must state each
       engine's default wait: PostgreSQL waits indefinitely (`lock_timeout` 0), MySQL 50 s
-      (`innodb_lock_wait_timeout`), SQLite ActiveRecord's `timeout` (5 s). Constitution VI
+      (`innodb_lock_wait_timeout`), SQLite ActiveRecord's `timeout` (5 s). State the Rails
+      7.0 + SQLite limit (research R3): concurrent guarded calls in one process can fail
+      closed after the busy timeout, because sqlite3 1.x waits holding the GVL; Rails 7.1+
+      or a server database avoids it. Constitution VI
       requires a runnable example for every new public entry point: `config.ledger_key`,
       `config.retired_ledger_keys`, `Reeve::Audit::Chain.verify`, `Chain#append!` (for
       custom recorders) and `bin/rails reeve:verify_ledger`. Extend the API assertions in
