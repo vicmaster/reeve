@@ -41,7 +41,12 @@ RSpec.describe "the audit entries migration" do
     "guard"          => { type: :string,   null: false },
     "duration_ms"    => { type: :integer,  null: true },
     "metadata"       => { type: :json,     null: true },
-    "contract_version" => { type: :integer, null: false }
+    "contract_version" => { type: :integer, null: false },
+    # Contract 3 (specs/002): nullable, because every row written before the upgrade has
+    # no honest value for them, and an unchained contract-3 row is reported, not refused.
+    "chain_sequence" => { type: :integer,  null: true },
+    "chain_key_id"   => { type: :string,   null: true },
+    "chain_digest"   => { type: :string,   null: true }
   }.each do |name, expected|
     it "creates #{name} as #{expected[:type]}, null: #{expected[:null]}" do
       expect(column(name)).not_to be_nil, "#{name} is missing from the table"
@@ -68,6 +73,61 @@ RSpec.describe "the audit entries migration" do
     expect(index.unique).to be(true)
   end
 
+  # specs/002 FR-004: two writers can never hold the same position. It also orders the
+  # verifier's walk.
+  it "indexes chain_sequence uniquely" do
+    index = Ledger.indexes.find { |i| i.columns == ["chain_sequence"] }
+
+    expect(index).not_to be_nil
+    expect(index.unique).to be(true)
+  end
+
+  # Rows written before the upgrade, and unchained contract-3 rows, all have a NULL
+  # sequence. NULLs are distinct under a unique index on all three engines; this pins it.
+  it "lets any number of rows have no chain sequence" do
+    row = lambda do |id|
+      { invocation_id: id, occurred_at: Time.now, agent_id: "a", tool_name: "t", arguments: {},
+        outcome: "allow", rule: "r", record_ids: [], guard: "policy", contract_version: 3 }
+    end
+
+    expect { 2.times { |i| Reeve::Audit::Entry.create!(row.call("inv-#{i}")) } }.not_to raise_error
+  end
+
+  describe "reeve_audit_chains (specs/002 data-model)" do
+    def chain_column(name)
+      ActiveRecord::Base.connection.columns(:reeve_audit_chains).find { |c| c.name == name }
+    end
+
+    # rubocop:disable-next Layout/HashAlignment
+    {
+      "name"                      => :string,
+      "genesis_at"                => :datetime,
+      "pre_chain_count"           => :integer,
+      "pre_chain_unchained_count" => :integer,
+      "genesis_key_id"            => :string,
+      "genesis_digest"            => :string,
+      "head_sequence"             => :integer,
+      "head_digest"               => :string
+    }.each do |name, type|
+      it "creates #{name} as #{type}, not null" do
+        expect(chain_column(name)).not_to be_nil, "#{name} is missing from reeve_audit_chains"
+        expect(chain_column(name).type).to eq(type)
+        expect(chain_column(name).null).to be(false)
+      end
+    end
+
+    it "keeps microseconds on genesis_at, so the genesis digest survives a round trip" do
+      expect(chain_column("genesis_at").precision).to eq(6)
+    end
+
+    it "indexes name uniquely, so two writers racing to start the chain cannot both win" do
+      index = ActiveRecord::Base.connection.indexes(:reeve_audit_chains).find { |i| i.columns == ["name"] }
+
+      expect(index).not_to be_nil
+      expect(index.unique).to be(true)
+    end
+  end
+
   # One composite index per FR-013 query axis.
   [
     %w[principal_type principal_id occurred_at],
@@ -86,14 +146,26 @@ RSpec.describe "the audit entries migration" do
   it "tells the host how to make the table append-only in the database" do
     template = File.read(Ledger::TEMPLATE)
 
-    expect(template).to match(/GRANT INSERT, SELECT/)
+    expect(template).to match(/GRANT INSERT, SELECT\s+ON reeve_audit_entries/)
     expect(template).to match(/retention|archival/i)
     expect(template).to match(/tamper-evidence|chaining/i)
+  end
+
+  # specs/002 contracts/audit-entry-v3.md: the chain record's head moves on every write, so
+  # it needs UPDATE — and a role holding UPDATE can rewind the head, which the template
+  # must say rather than leave to be discovered.
+  it "documents the chain table's grant and what it does not protect against" do
+    template = File.read(Ledger::TEMPLATE)
+
+    expect(template).to match(/GRANT INSERT, SELECT, UPDATE\s+ON reeve_audit_chains/)
+    expect(template).to match(/rewind the head/)
+    expect(template).not_to match(/no cryptographic chaining/i)
   end
 
   it "rolls back cleanly and can be re-applied" do
     Ledger.migrate_down!
     expect(Ledger.table_exists?).to be(false)
+    expect(ActiveRecord::Base.connection.table_exists?(:reeve_audit_chains)).to be(false)
 
     Ledger.migrate_up!
     expect(Ledger.table_exists?).to be(true)

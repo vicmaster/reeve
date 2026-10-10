@@ -33,14 +33,28 @@ module Reeve
       # contracts/audit-entry.md, which exists so that stays hypothetical: an append-only
       # ledger cannot be backfilled, so a column that is not additive has no honest value
       # to give the rows already written.
+      # `creates` names any table a step builds. A step is applied only when every column it
+      # adds and every table it creates exist: a ledger with one half and not the other is
+      # half-migrated, and calling it current would leave the host with no way forward.
       STEPS = [
         {
           contract: 2,
           adds: %w[contract_version],
+          creates: [],
           template: "add_contract_version_to_reeve_audit_entries.rb.tt",
           destination: "add_contract_version_to_reeve_audit_entries.rb"
+        },
+        {
+          contract: 3,
+          adds: %w[chain_sequence chain_key_id chain_digest],
+          creates: %w[reeve_audit_chains],
+          template: "add_ledger_chain_to_reeve_audit_entries.rb.tt",
+          destination: "add_ledger_chain_to_reeve_audit_entries.rb"
         }
       ].freeze
+
+      KEY_LINE = "config.ledger_key = " \
+                 'Rails.application.key_generator.generate_key("reeve audit ledger", 32)'
 
       source_root File.expand_path("templates", __dir__)
 
@@ -93,7 +107,7 @@ module Reeve
       end
 
       def pending_message
-        <<~NEXT
+        message = <<~NEXT
 
           #{@emitted.size} migration#{'s' if @emitted.size != 1} written, taking the ledger
           to audit-entry contract #{@emitted.last[:contract]}. Run:
@@ -103,13 +117,37 @@ module Reeve
           Existing rows are stamped with the contract they were actually written under,
           not with the current one.
         NEXT
+        message += chain_message if @emitted.any? { |step| step[:contract] == 3 }
+        message
+      end
+
+      # Contract 3 changes what the application must configure, not only the table: without
+      # a key, every guarded call fails closed once the migration runs. The host is reading
+      # this output at exactly the moment they need to know that.
+      def chain_message
+        <<~CHAIN
+
+          The ledger is now chained (contract 3). Add this line to config/initializers/reeve.rb
+          before you deploy, or every guarded call fails closed:
+
+            #{KEY_LINE}
+
+          It derives the key from secret_key_base, so rotating secret_key_base rotates the
+          ledger key: keep the old derived key in config.retired_ledger_keys, or entries it
+          signed become unverifiable. A dedicated key avoids that coupling.
+
+          Very large ledger on PostgreSQL? The migration builds a unique index that blocks
+          writes while it scans; the migration's header shows how to build it with
+          algorithm: :concurrently instead.
+        CHAIN
       end
 
       # Asked of the table rather than of a version the host recorded: the table is the
       # thing being changed, and it is the only party that cannot be out of date about
       # itself.
       def applied?(step)
-        (step[:adds] - existing_columns).empty?
+        (step[:adds] - existing_columns).empty? &&
+          step[:creates].all? { |table| connection.table_exists?(table) }
       end
 
       def existing_columns

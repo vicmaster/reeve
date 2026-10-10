@@ -119,4 +119,18 @@ RSpec.describe "Reeve errors" do
       expect(described_class.ancestors).to include(Reeve::Error)
     end
   end
+
+  # specs/002 FR-010: the error names the setting and how to supply it.
+  describe Reeve::LedgerKeyError do
+    subject(:error) { described_class.new }
+
+    it "descends from Reeve::Error" do
+      expect(described_class.ancestors).to include(Reeve::Error)
+    end
+
+    it "names the setting and the line that configures it" do
+      expect(error.message).to include("config.ledger_key")
+      expect(error.message).to include("key_generator.generate_key")
+    end
+  end
 end

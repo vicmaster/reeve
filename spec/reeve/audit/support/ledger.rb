@@ -57,13 +57,24 @@ module Ledger
     # Idempotent: the table is created once per process and emptied per example, because
     # wrapping examples in a transaction would change the very write semantics R5 is
     # about (a ledger write that survives the tool's own rollback).
+    # A ledger is its two tables. One without the other is what a spec that broke the
+    # schema on purpose leaves behind, and `clean!` would fail on it — so a half-present
+    # ledger is dropped and rebuilt rather than inherited by the next example.
     def prepare!
-      migrate_up! unless table_exists?
+      connect!
+      connection = ActiveRecord::Base.connection
+      present = [Reeve::Audit::Entry.table_name, "reeve_audit_chains"].map { |t| connection.table_exists?(t) }
+      unless present.all?
+        %w[reeve_audit_entries reeve_audit_chains].each { |t| connection.drop_table(t, if_exists: true) }
+        migrate_up!
+        Reeve::Audit::Entry.reset_column_information
+      end
       clean!
     end
 
     def clean!
       Reeve::Audit::Entry.delete_all
+      ActiveRecord::Base.connection.delete("DELETE FROM reeve_audit_chains")
       scratch.delete_all
     end
 
@@ -96,6 +107,16 @@ RSpec.shared_context "with a ledger table" do
   before { Ledger.prepare! }
 end
 
+# A fixed key for every example that can write the ledger (specs/002 T017). From contract
+# 3 a write without a key fails closed — the right behaviour for a host, and the wrong one
+# for 600 examples that are about something else. Set after spec_helper resets the
+# configuration, which is why it is a hook here rather than a constant there. Specs that
+# exercise the missing-key path unset it themselves.
+module Ledger
+  TEST_KEY = "reeve-spec-ledger-key-not-a-secret-0123456789"
+end
+
 RSpec.configure do |config|
   config.include_context "with a ledger table", ledger: true
+  config.before { Reeve.config.ledger_key = Ledger::TEST_KEY }
 end

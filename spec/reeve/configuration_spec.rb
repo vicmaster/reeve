@@ -232,8 +232,89 @@ RSpec.describe Reeve::Configuration do
       expect(config.to_h.keys).to contain_exactly(
         :principal_resolver, :unguarded_tools, :audit_failure_mode, :redact_arguments,
         :max_recorded_ids, :policy_adapter, :default_action, :audit_recorder, :logger,
-        :compliance_principals, :compliance_tools, :inventory
+        :compliance_principals, :compliance_tools, :inventory, :ledger_key,
+        :retired_ledger_keys
       )
+    end
+  end
+
+  # specs/002 FR-008, FR-009, FR-011; contracts/ledger-chain.md "Configuration".
+  describe "ledger keys" do
+    let(:key) { "k" * 32 }
+    let(:older) { "o" * 48 }
+
+    it "has no key and no retired keys by default" do
+      expect(config.ledger_key).to be_nil
+      expect(config.retired_ledger_keys).to eq([])
+      expect(config.ledger_key_id).to be_nil
+    end
+
+    it "accepts a key of at least 32 bytes" do
+      config.ledger_key = key
+      expect(config.ledger_key).to eq(key)
+    end
+
+    it "measures the minimum in bytes, which is what an HMAC key is" do
+      expect { config.ledger_key = "é" * 16 }.not_to raise_error # 32 bytes, 16 characters
+    end
+
+    it "accepts nil, which leaves a contract-3 ledger failing closed on write" do
+      config.ledger_key = key
+      config.ledger_key = nil
+      expect(config.ledger_key).to be_nil
+    end
+
+    it "rejects a short, blank or non-string key when it is assigned, not on first write" do
+      ["short", "", " " * 40, 12_345].each do |bad|
+        expect { config.ledger_key = bad }.to raise_error(ArgumentError, /ledger_key/)
+      end
+    end
+
+    it "names the requirement without echoing the secret" do
+      expect { config.ledger_key = "too-short-secret" }.to raise_error(ArgumentError) { |error|
+        expect(error.message).to include("32 bytes")
+        expect(error.message).not_to include("too-short-secret")
+      }
+    end
+
+    it "accepts retired keys for verification" do
+      config.retired_ledger_keys = [older]
+      expect(config.retired_ledger_keys).to eq([older])
+    end
+
+    it "rejects a retired key that is short, or not a list" do
+      expect { config.retired_ledger_keys = ["short"] }.to raise_error(ArgumentError, /retired_ledger_keys/)
+      expect { config.retired_ledger_keys = older }.to raise_error(ArgumentError, /retired_ledger_keys/)
+    end
+
+    it "rejects the signing key also listed as retired, whichever is assigned first" do
+      config.ledger_key = key
+      expect { config.retired_ledger_keys = [key] }.to raise_error(ArgumentError, /retired/)
+
+      other = described_class.new
+      other.retired_ledger_keys = [key]
+      expect { other.ledger_key = key }.to raise_error(ArgumentError, /retired/)
+    end
+
+    it "identifies a key by a stable 16-character fingerprint" do
+      config.ledger_key = key
+      expect(config.ledger_key_id).to match(/\A\h{16}\z/)
+      expect(config.ledger_key_id).to eq(Reeve::LedgerKey.fingerprint(key))
+
+      other = described_class.new
+      other.ledger_key = key
+      expect(other.ledger_key_id).to eq(config.ledger_key_id)
+    end
+
+    it "never shows a secret in #to_h or #inspect, only fingerprints" do
+      config.ledger_key = key
+      config.retired_ledger_keys = [older]
+
+      shown = "#{config.to_h.inspect} #{config.inspect}"
+      expect(shown).not_to include(key)
+      expect(shown).not_to include(older)
+      expect(config.to_h[:ledger_key]).to eq(Reeve::LedgerKey.fingerprint(key))
+      expect(config.to_h[:retired_ledger_keys]).to eq([Reeve::LedgerKey.fingerprint(older)])
     end
   end
 end

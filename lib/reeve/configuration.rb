@@ -24,8 +24,12 @@ module Reeve
     SETTINGS = %i[
       principal_resolver unguarded_tools audit_failure_mode redact_arguments
       max_recorded_ids policy_adapter default_action audit_recorder logger
-      compliance_principals compliance_tools inventory
+      compliance_principals compliance_tools inventory ledger_key retired_ledger_keys
     ].freeze
+
+    # Shown by #to_h and #inspect as fingerprints. A configuration object gets printed —
+    # in a console, a bug report, a failing spec — and a secret must not travel with it.
+    SECRET_SETTINGS = %i[ledger_key retired_ledger_keys].freeze
 
     attr_reader(*SETTINGS)
 
@@ -42,6 +46,47 @@ module Reeve
       @compliance_principals = nil
       @compliance_tools = nil
       @inventory = nil
+      @ledger_key = nil
+      @retired_ledger_keys = []
+    end
+
+    # The key that signs the audit ledger's chain (specs/002). Held in configuration, never
+    # in the database: that separation is the whole of the tamper-evidence guarantee.
+    # Validated here so a short key fails on the initializer line that set it.
+    #
+    #   config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)
+    def ledger_key=(secret)
+      unless secret.nil?
+        LedgerKey.validate!(secret, :ledger_key)
+        if @retired_ledger_keys.include?(secret)
+          raise ArgumentError, "ledger_key is also listed in retired_ledger_keys; a key " \
+                               "either signs or is retired, not both"
+        end
+      end
+
+      @ledger_key = secret
+    end
+
+    # Keys that signed older entries, kept so those entries still verify. Never used to
+    # sign. Removing one leaves the entries it signed unverifiable — reported as such,
+    # never as tampered.
+    def retired_ledger_keys=(secrets)
+      unless secrets.is_a?(Array)
+        raise ArgumentError, "retired_ledger_keys must be an Array of keys, got a #{secrets.class}"
+      end
+
+      secrets.each { |secret| LedgerKey.validate!(secret, :retired_ledger_keys) }
+      if !@ledger_key.nil? && secrets.include?(@ledger_key)
+        raise ArgumentError, "retired_ledger_keys includes the current ledger_key; a key " \
+                             "either signs or is retired, not both"
+      end
+
+      @retired_ledger_keys = secrets.dup.freeze
+    end
+
+    # The fingerprint stored on every row this configuration signs, or nil with no key.
+    def ledger_key_id
+      @ledger_key && LedgerKey.fingerprint(@ledger_key)
     end
 
     # The host's whole tool inventory (Reeve::Inventory). Optional. Setting it is what lets
@@ -163,10 +208,29 @@ module Reeve
     end
 
     def to_h
-      SETTINGS.to_h { |setting| [setting, public_send(setting)] }
+      SETTINGS.to_h { |setting| [setting, shown(setting)] }
+    end
+
+    def inspect
+      "#<#{self.class.name} #{to_h.map do |setting, value|
+        "#{setting}=#{value.inspect}"
+      end.join(', ')}>"
     end
 
     private
+
+    def shown(setting)
+      value = public_send(setting)
+      return value unless SECRET_SETTINGS.include?(setting)
+
+      if value.is_a?(Array)
+        value.map do |secret|
+          LedgerKey.fingerprint(secret)
+        end
+      else
+        value && LedgerKey.fingerprint(value)
+      end
+    end
 
     def require_one_of!(setting, value, allowed)
       symbol = value.is_a?(Symbol) ? value : nil

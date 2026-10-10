@@ -2,6 +2,7 @@
 
 require_relative "reeve/version"
 require_relative "reeve/errors"
+require_relative "reeve/ledger_key"
 require_relative "reeve/decision"
 require_relative "reeve/configuration"
 require_relative "reeve/context"
@@ -9,6 +10,7 @@ require_relative "reeve/scope_result"
 require_relative "reeve/invocation"
 require_relative "reeve/authorization"
 require_relative "reeve/inventory"
+require_relative "reeve/railtie" if defined?(Rails::Railtie)
 
 # Reeve — per-record authorization and an append-only audit ledger for the MCP tools
 # a Rails application exposes to AI agents.

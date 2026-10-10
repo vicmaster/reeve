@@ -3,7 +3,7 @@
 **Stability**: public and **versioned** (FR-015). The entry shape is a compliance artifact;
 downstream exports and SIEM mappings depend on it.
 
-**Contract version**: `2`. Adding a nullable column is a MINOR change. Removing a column,
+**Contract version**: `3`. Adding a nullable column is a MINOR change. Removing a column,
 renaming one, or changing the meaning of a value is MAJOR.
 
 Asserted by `Reeve::Checks::ContractVersion`, which compares both the column list and the
@@ -47,6 +47,16 @@ and destroys the record of what was applied.
 
 ### History
 
+- **3** (specs/002) — Entries are chained. New nullable columns `chain_sequence`,
+  `chain_key_id`, `chain_digest`; new table `reeve_audit_chains` holding the genesis and
+  the head. Additive, but MAJOR by this document's own rule, because what an absence means
+  changes: on a contract 1–2 row a NULL digest means "written before chaining", while on a
+  contract-3 row it means the row was written unchained, which verification reports.
+  Existing rows are not touched and are reported as uncovered.
+
+  **Breaking for custom recorders** that write to `Reeve::Audit::Entry`: rows at contract
+  3 must be written through `Reeve::Audit::Chain#append!`, or verification reports them as
+  unchained.
 - **2** (2026-08-12) — Two changes, one bump.
   - `metadata` carries the transport detail the caller passed. Through version 1 it was
     written NULL on every row whatever was passed, so anything mapping version 1 rows
@@ -90,6 +100,13 @@ column-level table. Contractual guarantees on top of it:
    wherever it appears, including nested. Nullable: a call that carried none records
    `NULL` rather than `{}`, so "carried nothing" stays distinguishable from "carried
    something that was emptied". Populated from contract version `2`.
+9. **Chained entries are tamper-evident, within stated limits.** Every contract-3 row
+   written with a key carries a sequence number, the fingerprint of the key that signed it,
+   and a keyed digest linking it to its predecessor. Verification detects a changed,
+   removed, reordered or inserted chained row, and removal of the chain record, provided
+   the attacker does not hold the key. It does **not** detect: use of a compromised key;
+   removal of the newest rows together with a rewind of the head; deletion of the whole
+   ledger; anything about rows written before contract 3.
 
 ## Query interface (FR-013)
 
@@ -116,5 +133,7 @@ SC-003's "single query, no log inspection".
   enforces immutability at the library level and documents the INSERT+SELECT grant that
   enforces it at the database level. It makes no stronger claim.
 - No retention, rotation, or archival policy in v1 — the table is host-owned.
-- No cryptographic chaining or tamper-evidence in v1. If it lands later it is additive
-  (a nullable digest column), which this contract's versioning already permits.
+- Tamper-evidence, not tamper-proofing: chaining (guarantee 9) detects changes after the
+  fact and prevents nothing; the database grant remains the control that prevents. A role
+  with `UPDATE` on `reeve_audit_chains` can rewind the head, which is one of the chain's
+  stated limits.

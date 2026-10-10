@@ -10,7 +10,8 @@ module Reeve
     # the ledger is absent.
     #
     # A host with its own non-ActiveRecord recorder can pass any object with these six
-    # methods as `ledger:` to any ledger-reading check.
+    # methods as `ledger:` to any ledger-reading check; LedgerChain also asks for
+    # #verify_chain, and is skipped by a ledger that has none.
     class Ledger
       def self.default
         new
@@ -65,6 +66,15 @@ module Reeve
         return [] unless available?
 
         entry_class.column_names.map(&:to_s)
+      end
+
+      # The chain's verification of the whole ledger (specs/002), or nil when the ledger is
+      # not loaded. The kit's only way to the chain: it names Reeve::Audit::Chain here, at
+      # call time, so `require "reeve/testing"` still loads with no ActiveRecord at all.
+      def verify_chain
+        return nil unless available? && Reeve::Audit.const_defined?(:Chain, false)
+
+        Reeve::Audit::Chain.verify(entry_class: entry_class)
       end
 
       private

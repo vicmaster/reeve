@@ -31,6 +31,14 @@ module Reeve
         !results.empty? && results.all?(&:skipped?)
       end
 
+      # A check had nothing to examine — a per-tool check run over no tools at all. passed?
+      # is still true then, since nothing failed; a test framework shows the skip, but a
+      # gate with no framework (a CI script, a deploy step) has only this to stop on. A skip
+      # for a missing inventory is not this: there the tools existed and were checked.
+      def nothing_checked?
+        results.any? { |result| result.skipped? && result.details[:coverage] == :none }
+      end
+
       def failures
         results.select(&:failed?)
       end

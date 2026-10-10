@@ -44,9 +44,14 @@ module Reeve
   #   documents the `GRANT INSERT, SELECT` that enforces the rest where it can actually be
   #   enforced, and the gem makes no stronger claim than that.
   # * No retention, rotation or archival yet — the table is host-owned and the host's
-  #   existing policies apply.
-  # * No cryptographic chaining or tamper-evidence yet. If that lands it arrives as a
-  #   nullable column, which the audit-entry contract's versioning already permits.
+  #   existing policies apply. Deleting rows breaks the chain, by design.
+  # * Tamper-evidence, not tamper-proofing. Every row is chained to the one before it
+  #   (Reeve::Audit::Chain, contract 3), so a change made outside the library is reported
+  #   by verification — after the fact; it prevents nothing. It does not detect a change
+  #   made by someone holding the ledger key, the newest rows deleted by a role that can
+  #   also rewind the chain record's head, the whole ledger deleted, or anything about
+  #   rows written before contract 3. specs/001-guardrails-core/contracts/audit-entry.md,
+  #   guarantee 9, is the authoritative statement.
   #
   # ("yet" rather than "in v1": the gem version and the audit-entry contract version are
   # different numbers that move independently, and writing v1 for one of them read as the
@@ -57,11 +62,16 @@ module Reeve
     # column is a MINOR change and leaves this alone; removing or renaming a column, or
     # changing what a value means, is MAJOR and bumps it.
     #
+    # 3 — entries are chained (specs/002). The three chain columns are nullable, so the
+    # shape change is additive, but what a NULL digest means changed: on a contract-3 row
+    # it is a row written unchained, which verification reports, where on an older row it
+    # only means the row predates chaining.
+    #
     # 2 — `metadata` carries the transport detail the caller passed. Through version 1 it
     # was written NULL on every row regardless of what was passed, so anything mapping
     # version 1 rows could reasonably have read the column as "always empty". The shape
     # did not change; what a value means did.
-    CONTRACT_VERSION = 2
+    CONTRACT_VERSION = 3
 
     TABLE_NAME = "reeve_audit_entries"
 
@@ -94,5 +104,15 @@ require_relative "audit/entry"
 require_relative "audit/recorder"
 require_relative "audit/isolated_recorder"
 require_relative "audit/query"
+require_relative "audit/chain/keyring"
+require_relative "audit/chain/normalizer"
+require_relative "audit/chain/canonical"
+require_relative "audit/chain_record"
+require_relative "audit/chain/verification"
+require_relative "audit/chain/report"
+require_relative "audit/chain/head"
+require_relative "audit/chain/walk"
+require_relative "audit/chain/verifier"
+require_relative "audit/chain"
 
 Reeve::Audit.install!

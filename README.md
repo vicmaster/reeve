@@ -52,7 +52,10 @@ end
 ```
 
 Until that resolver is set, every guarded call denies with `no_principal`. That is the
-intended behaviour: the library is safe before it is configured.
+intended behaviour: the library is safe before it is configured. The initializer also
+derives the key that chains the audit ledger from `secret_key_base`, so that works in
+every environment with nothing to set up — see [Tamper-evident, within stated
+limits](#tamper-evident-within-stated-limits).
 
 **2. Guard a tool.**
 
@@ -186,6 +189,108 @@ transaction holds the write lock; `IsolatedRecorder.available?` lets you branch 
 develop on one and deploy on the other. The default recorder warns when it detects the
 case rather than failing silently.
 
+## Tamper-evident, within stated limits
+
+Every row Reeve writes is linked to the one before it by a keyed digest (HMAC-SHA256), with
+a key the database does not hold. Someone who can write to the ledger table but does not
+hold the key can still change it, but the change shows when the chain is checked:
+
+```bash
+bin/rails reeve:verify_ledger
+```
+
+```text
+reeve ledger: INTACT — sequences 1–48,211 verified (head at start: 48,211); 5,000 earlier entries not covered (5,000 when the chain started)
+```
+
+It exits `0` when the chain is intact, `1` when it is broken, and `2` when it could not
+verify (no chain, no key, or rows signed by a key it does not hold). Run it on a schedule
+and alert on anything but `0`. `LIMIT=` caps the breaks it lists, never the totals;
+`FORMAT=json` writes every break. The same answer from Ruby, or with an auditor's own copy
+of the key:
+
+```ruby
+result = Reeve::Audit::Chain.verify
+result.status   # => :intact, :broken, :unverifiable or :no_chain
+result.covered  # => 1..48211
+puts result     # the report above, with every break listed under it
+```
+
+In CI the compliance suite you already run includes `LedgerChain`, in both frameworks:
+it writes entries of its own and fails on a broken chain, a missing key, or entries that
+were not chained.
+
+**The key.** The generated initializer derives it from `secret_key_base`:
+
+```ruby
+config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)
+```
+
+Rotating `secret_key_base` therefore rotates the ledger key. Keep the old one, or the
+entries it signed become *unverifiable* — reported as such, never as tampered:
+
+```ruby
+config.retired_ledger_keys = [old_key]   # verify with these; never sign with them
+```
+
+A dedicated key decouples the two: `config.ledger_key = Rails.application.credentials.reeve_ledger_key`.
+Keys must be at least 32 bytes and are only ever printed as 16-character fingerprints.
+Without a key, every guarded call fails closed; under `audit_failure_mode = :warn` it is
+recorded unchained instead, logged each time, and reported by verification.
+
+**Detected**, provided the key has not leaked:
+
+- a chained row whose recorded content was changed;
+- a chained row removed from anywhere before the newest one;
+- chained rows swapped, renumbered or moved, or a row inserted that Reeve did not write —
+  including one numbered past the head;
+- the newest rows removed while the chain record was left alone;
+- the chain record removed while chained rows remain.
+
+**Not detected** — stated plainly, because these are the limits of the guarantee:
+
+1. **A leaked key.** Anyone holding it can rewrite the chain from any point forward. By
+   default that is anyone holding `secret_key_base`.
+2. **The newest rows deleted by someone who also rewinds the chain record's head.** Only a
+   checkpoint held outside the database could catch that; Reeve does not ship one.
+3. **The whole ledger deleted, chain record included.** Reported as *no chain*, never as a
+   pass — but indistinguishable from a ledger that was never chained.
+4. **Rows written before you upgraded.** They are counted as "not covered" and are exactly
+   as trustworthy as they were before.
+
+And it prevents nothing: it detects a change after the fact. The `GRANT INSERT, SELECT` in
+the generated migration is what prevents one. The chain record needs `UPDATE` as well,
+which is why a role allowed to rewind it is limit 2.
+
+**What it costs.** About half a millisecond per ledger write on SQLite and about one on
+PostgreSQL. Every chained write locks the chain record, so writes serialize. Under the
+default recorder inside a transaction your application opened, that lock is held until the
+transaction ends, and every other guarded call waits behind it — up to the database's own
+lock wait: indefinitely on PostgreSQL (`lock_timeout` is 0 by default), 50 seconds on MySQL
+(`innodb_lock_wait_timeout`), and ActiveRecord's `timeout` on SQLite (5 seconds in a
+generated `database.yml`). `IsolatedRecorder` holds it for the length of one insert. On
+**Rails 7.0 with SQLite**, a thread waiting for SQLite's write lock holds Ruby's GVL
+(sqlite3 1.x), so concurrent guarded calls in one process can fail closed after the busy
+timeout. Rails 7.1+ or a server database avoids it.
+
+**Your own recorder.** A recorder that writes to Reeve's table chains its rows through the
+same door the built-in ones use, or verification reports them as unchained:
+
+```ruby
+Reeve::Audit::Chain.new(entry_class: Reeve::Audit::Entry).append!(row)
+```
+
+**Upgrading from 0.5.0:**
+
+```bash
+bin/rails generate reeve:upgrade
+bin/rails db:migrate
+```
+
+Then add the `config.ledger_key` line the generator prints. Existing rows are not touched;
+the next guarded call starts the chain. Servers still on 0.5.0 during a rolling deploy keep
+writing unchained rows, which are counted as not covered rather than reported as tampering.
+
 ## Provable in CI, in whichever framework you already use
 
 All the logic lives in framework-neutral checks. RSpec and Minitest are thin front-ends
@@ -223,11 +328,13 @@ script, or a boot-time assertion in staging:
 require "reeve/testing"
 
 report = Reeve::Checks.run_all(principals: [alice, bob])
-abort report.to_s unless report.passed?
+abort report.to_s if report.failed? || report.nothing_checked?
 ```
 
 `alice` and `bob` are two fixture principals with disjoint records — that disjointness is
-what makes a shared record identifier proof of a leak.
+what makes a shared record identifier proof of a leak. `passed?` only means nothing failed,
+so a run over no tools at all passes; `nothing_checked?` is what stops this gate when the
+registry is empty, since a script has no pending test to show it.
 
 **The suite walks every tool that included `Reeve::Guard`, not only the ones that declared
 a guard.** A tool that forgot `guard_with` is the one worth finding, and it is absent from
@@ -257,7 +364,7 @@ namespace :reeve do
     require "reeve/testing"
 
     report = Reeve::Checks.run_all(principals: Reeve::Testing.compliance_principals)
-    abort report.to_s unless report.passed?
+    abort report.to_s if report.failed? || report.nothing_checked?
     puts report
   end
 end
@@ -470,7 +577,7 @@ ActiveRecord unless they are not — a plain object with an `id` works.
 ## What you have not gained
 
 Rate limiting, prompt-injection defence, cost control, and connection authentication are
-out of scope. This library governs *what an authenticated agent may touch* and *what it
+out of scope, and the ledger's chain detects tampering rather than preventing it. This library governs *what an authenticated agent may touch* and *what it
 touched*. Keep your existing auth.
 
 Ruby 3.0+, Rails 7.0+. No runtime dependencies. The fast-mcp adapter needs Ruby 3.1+,

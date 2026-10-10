@@ -68,7 +68,10 @@ module SpecDatabase
     # threads, which check out their own connections.
     def sqlite_configuration
       at_exit { FileUtils.rm_f(SQLITE_PATH) }
-      { adapter: "sqlite3", database: SQLITE_PATH }
+      # timeout: what every generated Rails database.yml sets. Without it SQLite's busy
+      # timeout is zero, and a writer that finds the write lock taken fails at once rather
+      # than waiting its turn — which the chain's concurrency spec exists to prove it does.
+      { adapter: "sqlite3", database: SQLITE_PATH, timeout: 5000 }
     end
 
     def server_configuration(extra)
@@ -78,7 +81,10 @@ module SpecDatabase
         username: ENV.fetch("DB_USERNAME", default_username),
         password: ENV.fetch("DB_PASSWORD", nil),
         host: ENV.fetch("DB_HOST", "127.0.0.1"),
-        port: ENV.fetch("DB_PORT", nil)&.to_i
+        port: ENV.fetch("DB_PORT", nil)&.to_i,
+        # The chain's concurrency spec runs 8 writers, each holding a connection; the
+        # default pool of 5 would make three of them wait for a checkout instead.
+        pool: 10
       }.compact.merge(extra)
     end
 

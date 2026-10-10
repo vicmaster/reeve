@@ -9,6 +9,7 @@ require_relative "checks/redaction_holds"
 require_relative "checks/principal_required"
 require_relative "checks/contract_version"
 require_relative "checks/endpoint_coverage"
+require_relative "checks/ledger_chain"
 
 module Reeve
   module Testing
@@ -19,7 +20,7 @@ module Reeve
     # the same violation reads identically from either — and from neither:
     #
     #   report = Reeve::Checks.run_all(principals: [alice, bob])
-    #   abort report.to_s unless report.passed?
+    #   abort report.to_s if report.failed? || report.nothing_checked?
     #
     # Nothing here loads a test framework (FR-026).
     module Checks
@@ -31,12 +32,13 @@ module Reeve
         RedactionHolds,
         PrincipalRequired,
         ContractVersion,
-        EndpointCoverage
+        EndpointCoverage,
+        LedgerChain
       ].freeze
 
       # The checks that are asked once — about the ledger, or about the endpoint as a
       # whole — rather than once per tool.
-      GLOBAL = [ContractVersion, EndpointCoverage].freeze
+      GLOBAL = [ContractVersion, EndpointCoverage, LedgerChain].freeze
 
       # The compliance suite's engine (FR-018): every check, against every registered
       # guarded tool, in one Report.
@@ -58,10 +60,12 @@ module Reeve
       def self.run(check, principals:, tools: nil, arguments: {}, invoke: nil, ledger: nil)
         if GLOBAL.include?(check)
           return Report.new([build(check, tool: nil, principals: principals, tools: tools,
-                                          ledger: ledger).call])
+                                          invoke: invoke, ledger: ledger).call])
         end
 
         subjects = tools || Testing.compliance_tools
+        return Report.new([nothing_to_check(check, tools)]) if subjects.empty?
+
         Report.new(
           subjects.map do |tool|
             build(check, tool: tool, principals: principals, arguments: arguments,
@@ -69,6 +73,25 @@ module Reeve
           end
         )
       end
+
+      # A per-tool check over no tools establishes nothing, and an empty Report reads as
+      # passed — the green that means "did not look". So an empty population is one skip,
+      # saying which of the three ways the run came to have nothing in it.
+      def self.nothing_to_check(check, tools)
+        reason =
+          if !tools.nil? then "the run was given tools: []"
+          elsif Testing.compliance_tools_narrowed? then "compliance_tools is []"
+          else "the registry is empty and no endpoint inventory routes a tool"
+          end
+
+        Result.skipped(
+          check: check.check_name,
+          message: "no compliance tools to check, so #{check.check_name} established " \
+                   "nothing — #{reason}",
+          details: { coverage: :none }
+        )
+      end
+      private_class_method :nothing_to_check
 
       # Every per-tool check for one tool, instantiated but not run.
       def self.for_tool(tool, principals:, arguments: {}, invoke: nil, ledger: nil)
@@ -91,6 +114,8 @@ module Reeve
         when "GuardDeclared"      then GuardDeclared.new(tool: tool, ledger: ledger)
         when "ContractVersion"    then ContractVersion.new(ledger: ledger)
         when "EndpointCoverage"   then EndpointCoverage.new(tools: tools, ledger: ledger)
+        when "LedgerChain"        then LedgerChain.new(tools: tools, principals: principals,
+                                                       invoke: invoke, ledger: ledger)
         when "PrincipalRequired"  then PrincipalRequired.new(**common)
         when "CrossPrincipalLeak" then CrossPrincipalLeak.new(principals: Array(principals),
                                                               **common)
