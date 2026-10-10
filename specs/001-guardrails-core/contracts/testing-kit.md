@@ -55,6 +55,13 @@ run is a subset by its own account. A skipped result is counted and printed in a
 whole endpoint and a registered tool bypasses reeve, reaches it unguarded, or the inventory
 names a tool the server does not register.
 
+**On per-tool checks with no tools (added 2026-10-10)**: `EndpointCoverage` is no longer
+the only check that can be skipped. `Checks.run` over an empty population — no tool
+registered, `compliance_tools` set to `[]`, or `tools: []` — used to return an empty
+`Report`, which reads as passed, so all six per-tool checks went green having examined
+nothing. Each now returns one skipped result, "no compliance tools to check, so
+GuardDeclared established nothing — …", naming which of the three emptied the run.
+
 **On `ContractVersion` (corrected 2026-08-11)**: this originally said "the *recorded*
 contract version matches the gem", which is not checkable — there is no `contract_version`
 column, and adding one would stamp the same value on every row of a deploy. What the check

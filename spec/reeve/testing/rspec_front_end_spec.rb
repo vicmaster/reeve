@@ -137,6 +137,32 @@ RSpec.describe "the shared group with no inventory declared", :reeve_fixtures do
   end
 end
 
+# With nothing registered, a per-tool check has nothing to look at. The shared group must
+# show each one pending with its reason, not green over zero tools.
+RSpec.describe "the shared group with no tools to check", :reeve_fixtures do
+  it "marks every per-tool check pending, with its reason" do
+    Reeve::Testing.compliance_principals = -> { ReeveFixtures.principals }
+
+    group = RSpec.describe("inner") do
+      before { Reeve.reset_registry! }
+
+      it_behaves_like "a reeve-compliant server"
+    end
+    group.run(RSpec::Core::NullReporter)
+    statuses = group.descendants.flat_map(&:examples).to_h do |example|
+      [example.description[/satisfies (\w+)/, 1], example.execution_result]
+    end
+    per_tool = statuses.except("ContractVersion", "EndpointCoverage", "LedgerChain")
+
+    expect(per_tool.size).to eq(6)
+    expect(per_tool.values.map(&:status)).to all(eq(:pending))
+    expect(per_tool.values.map(&:pending_message)).to all(include("no compliance tools to check"))
+  ensure
+    RSpec.world.example_groups.delete(group) if group
+    Reeve::Testing.reset!
+  end
+end
+
 # specs/002 T041: the same ledger-chain failure through the RSpec shared group carries the
 # check's own words, character for character, as it does through Minitest.
 RSpec.describe "the shared group's ledger chain with no key configured", :reeve_fixtures do

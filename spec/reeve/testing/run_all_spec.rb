@@ -73,14 +73,70 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
     expect(report.size).to eq(15) # six per-tool checks for each of two tools, plus three ledger-wide
   end
 
-  it "runs with an empty registry rather than blowing up" do
+  it "runs with an empty registry rather than blowing up, and claims nothing per tool" do
     Reeve.reset_registry!
 
     report = run_all
+    per_tool = report.results.reject do |result|
+      %w[ContractVersion EndpointCoverage LedgerChain].include?(result.check)
+    end
 
-    # The three ledger-wide checks; LedgerChain has no tool to write with and is skipped.
-    expect(report.size).to eq(3)
-    expect(report).to be_passed
+    # One skip for each of the six per-tool checks, plus the three ledger-wide checks, of
+    # which only ContractVersion establishes anything: the ledger's shape needs no tool.
+    expect(report.size).to eq(9)
+    expect(per_tool.map(&:check)).to contain_exactly(
+      "GuardDeclared", "CrossPrincipalLeak", "AuditCoverage", "RulePresent",
+      "RedactionHolds", "PrincipalRequired"
+    )
+    expect(per_tool).to all(be_skipped)
+    expect(report.passes.map(&:check)).to eq(["ContractVersion"])
+    expect(report).not_to be_skipped
+  end
+
+  # A per-tool check over no tools establishes nothing, and a Report of no results reads as
+  # passed. So an empty population is one skipped result, with its reason, never zero.
+  describe "Reeve::Checks.run with no tools to check" do
+    per_tool = Reeve::Checks::ALL - Reeve::Checks::GLOBAL
+
+    per_tool.each do |check|
+      it "skips #{check.check_name} rather than passing it" do
+        report = Reeve::Checks.run(check, principals: [alice, bob], tools: [])
+
+        expect(report.size).to eq(1)
+        expect(report).to be_skipped
+        expect(report.results.first.check).to eq(check.check_name)
+        expect(report.to_s).to include("no compliance tools to check")
+      end
+    end
+
+    it "says the run was given an empty tools: list" do
+      report = Reeve::Checks.run(Reeve::Checks::GuardDeclared, principals: [alice, bob], tools: [])
+
+      expect(report.results.first.message).to eq(
+        "no compliance tools to check, so GuardDeclared established nothing — " \
+        "the run was given tools: []"
+      )
+    end
+
+    it "says compliance_tools is empty when the host narrowed it to nothing" do
+      Reeve::Testing.compliance_tools = []
+
+      report = Reeve::Checks.run(Reeve::Checks::GuardDeclared, principals: [alice, bob])
+
+      expect(report.results.first.message).to end_with("— compliance_tools is []")
+    ensure
+      Reeve::Testing.reset!
+    end
+
+    it "says the registry is empty when reeve knows of no tool at all" do
+      Reeve.reset_registry!
+
+      report = Reeve::Checks.run(Reeve::Checks::GuardDeclared, principals: [alice, bob])
+
+      expect(report.results.first.message).to end_with(
+        "— the registry is empty and no endpoint inventory routes a tool"
+      )
+    end
   end
 
   describe Reeve::Testing::Report do

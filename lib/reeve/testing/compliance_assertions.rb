@@ -15,8 +15,9 @@ module Reeve
     #
     # One method per check, matching the RSpec shared example group one for one, so a red
     # build names the guarantee that broke rather than reporting "compliance" as one
-    # undifferentiated failure. A check that could establish nothing either way is
-    # skipped with its reason, never passed.
+    # undifferentiated failure. A check that could establish nothing either way — no
+    # inventory declared, or no tools to run a per-tool check over — is skipped with its
+    # reason, never passed.
     module ComplianceAssertions
       include Assertions
 
