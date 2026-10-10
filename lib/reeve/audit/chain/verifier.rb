@@ -74,9 +74,10 @@ module Reeve
         end
 
         def check_genesis(record)
-          secret = keyring.for(record.genesis_key_id)
+          key_id = record.genesis_key_id
+          secret = keyring.for(key_id)
           if secret.nil?
-            return add(:unknown_key, 0, "the genesis is signed by key #{record.genesis_key_id}")
+            return add(:unknown_key, 0, "the genesis is signed by key #{key_id}", nil, key_id)
           end
           return if Canonical.genesis_digest(secret, record) == record.genesis_digest
 
@@ -86,10 +87,11 @@ module Reeve
         def check_beyond_head(record)
           return if record.nil?
 
-          entry_class.where("chain_sequence > ?", record.head_sequence).order(:chain_sequence)
-                     .pluck(:chain_sequence).each do |sequence|
-            add(:beyond_head, sequence, "numbered past the head (#{record.head_sequence})")
-          end
+          head = record.head_sequence
+          detail = "numbered past the head (#{Report.number(head)} at the end of the walk); " \
+                   "reeve did not write it"
+          beyond = entry_class.where("chain_sequence > ?", head).order(:chain_sequence)
+          beyond.pluck(:chain_sequence).each { |sequence| add(:beyond_head, sequence, detail) }
         end
 
         # Contract-3 rows with no digest, beyond the number that already existed when the
@@ -105,9 +107,9 @@ module Reeve
           end
         end
 
-        def add(kind, sequence, detail = nil, invocation_id = nil)
+        def add(kind, sequence, detail = nil, invocation_id = nil, key_id = nil)
           breaks << Verification::Break.new(kind: kind, sequence: sequence, detail: detail,
-                                            invocation_id: invocation_id)
+                                            invocation_id: invocation_id, key_id: key_id)
         end
 
         def result(record, head_at_end, last_sequence)

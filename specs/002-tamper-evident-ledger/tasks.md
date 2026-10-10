@@ -227,7 +227,7 @@ summary line, and that only an intact chain gives a success result.
 
 ### Tests first
 
-- [ ] T030 [P] [US2] Extend `spec/reeve/audit/chain/verifier_spec.rb` with the status rules in
+- [x] T030 [P] [US2] Extend `spec/reeve/audit/chain/verifier_spec.rb` with the status rules in
       data-model.md, in their order of precedence:
       - no key → `:unverifiable` and nothing else claimed;
       - no chain record and no chained rows → `:no_chain`;
@@ -239,13 +239,13 @@ summary line, and that only an intact chain gives a success result.
       - a row signed by a retired key verifies;
       - contract-2 rows written after the genesis (rolling deploy) → still `:intact`, with
         the uncovered count now and at genesis both reported.
-- [ ] T031 [P] [US2] Write `spec/reeve/audit/chain/verification_output_spec.rb`. Every status's
+- [x] T031 [P] [US2] Write `spec/reeve/audit/chain/verification_output_spec.rb`. Every status's
       `to_s` matches the examples in contracts/ledger-chain.md "Output". **SC-006:** over
       every ledger state built in this file, no output line contains "intact" or "pass"
       without the covered range and the uncovered count on the same line. `LIMIT` caps the
       listed breaks but never the totals. `as_json` has every field in data-model.md. No
       output, in any format or state, contains a key secret (FR-008); only fingerprints
-- [ ] T032 [P] [US2] Extend `spec/reeve/audit/chain/tamper_spec.rb` with the "Not detected"
+- [x] T032 [P] [US2] Extend `spec/reeve/audit/chain/tamper_spec.rb` with the "Not detected"
       list, pinned as undetected and labelled so in each example's description:
       - a key holder re-signs from row k → `:intact`;
       - newest rows deleted and the head rewound → `:intact`;
@@ -254,9 +254,9 @@ summary line, and that only an intact chain gives a success result.
 
 ### Implementation
 
-- [ ] T033 [US2] Implement the status rules and the uncovered/unchained counts (two
+- [x] T033 [US2] Implement the status rules and the uncovered/unchained counts (two
       `COUNT(*)` queries) in `lib/reeve/audit/chain/verifier.rb`
-- [ ] T034 [US2] Implement `to_s` (summary line plus capped breaks) and `as_json` in
+- [x] T034 [US2] Implement `to_s` (summary line plus capped breaks) and `as_json` in
       `lib/reeve/audit/chain/verification.rb`, wording exactly as in
       contracts/ledger-chain.md
 

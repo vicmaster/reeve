@@ -98,6 +98,9 @@ A rolled-back write rolls back the head move with it. There is no other transiti
 | `head_at_end` | The head re-read after the walk; chained rows above it are `beyond_head` |
 | `unchained_now` / `unchained_at_genesis` | Contract-3 rows with no digest, now and at genesis |
 
+`totals` counts breaks per kind, one per break; a gap is one `missing` break whose range
+shows the entries it spans.
+
 `Break#kind` ∈ `digest_mismatch`, `missing`, `duplicate`, `unchained`, `head_mismatch`,
 `beyond_head`, `genesis_altered`, `chain_record_missing`, `unknown_key`. A break carries a
 sequence or range, except `unchained`, which carries an `invocation_id`.

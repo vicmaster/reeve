@@ -14,7 +14,10 @@ module Reeve
 
         # `sequence` is an Integer or a Range (a gap), or nil for a break that has no
         # position; an unchained row has none and is named by `invocation_id` instead.
-        Break = Struct.new(:kind, :sequence, :detail, :invocation_id, keyword_init: true)
+        # `key_id` is set for unknown_key: the fingerprint of the key the verifier lacked.
+        Break = Struct.new(:kind, :sequence, :detail, :invocation_id, :key_id, keyword_init: true)
+
+        DEFAULT_LIMIT = 100
 
         KINDS = %i[
           digest_mismatch missing duplicate unchained head_mismatch beyond_head
@@ -66,6 +69,40 @@ module Reeve
 
         def unverifiable_count
           totals[:unknown_key]
+        end
+
+        # The report a person reads (contracts/ledger-chain.md "Output"). The first line
+        # states the status and what it covers together; no line says "intact" or "pass"
+        # without the covered range and the uncovered count beside it (SC-006). `limit`
+        # caps the breaks listed, never the totals.
+        def to_s(limit: DEFAULT_LIMIT)
+          Report.new(self).to_s(limit: limit)
+        end
+
+        def as_json(*)
+          {
+            "status" => status.to_s, "covered" => range_json(covered),
+            "head_at_start" => head_at_start, "head_at_end" => head_at_end,
+            "uncovered_now" => uncovered_now, "uncovered_at_genesis" => uncovered_at_genesis,
+            "unchained_now" => unchained_now, "unchained_at_genesis" => unchained_at_genesis,
+            "unverifiable_count" => unverifiable_count,
+            "totals" => totals.transform_keys(&:to_s), "reason" => reason&.to_s,
+            "breaks" => breaks.map { |b| break_json(b) }
+          }
+        end
+
+        private
+
+        def break_json(found)
+          {
+            "kind" => found.kind.to_s, "sequence" => range_json(found.sequence),
+            "detail" => found.detail, "invocation_id" => found.invocation_id,
+            "key_id" => found.key_id
+          }
+        end
+
+        def range_json(value)
+          value.is_a?(Range) ? { "first" => value.first, "last" => value.last } : value
         end
       end
     end

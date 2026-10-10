@@ -45,9 +45,14 @@ module Reeve
           sequence = entry.chain_sequence
           return revisit(entry) if sequence == @last_sequence
 
-          @report.call(:missing, @expected..(sequence - 1)) if sequence > @expected
+          report_gap(@expected..(sequence - 1)) if sequence > @expected
           verify(entry, @link)
           advance(entry)
+        end
+
+        def report_gap(range)
+          count = range.size
+          @report.call(:missing, range, "#{count} #{count == 1 ? 'entry' : 'entries'} not found")
         end
 
         # A second row claiming the sequence just seen: reported, and checked against the
@@ -73,7 +78,9 @@ module Reeve
           key_id = entry.chain_key_id
           sequence = entry.chain_sequence
           secret = keyring.for(key_id)
-          return @report.call(:unknown_key, sequence, "signed by key #{key_id}") if secret.nil?
+          if secret.nil?
+            return @report.call(:unknown_key, sequence, "signed by key #{key_id}", nil, key_id)
+          end
 
           expected = Canonical.entry_digest(secret, entry, previous_digest: previous)
           @report.call(:digest_mismatch, sequence, MISMATCH) unless expected == entry.chain_digest

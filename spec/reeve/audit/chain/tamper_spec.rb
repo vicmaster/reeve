@@ -144,4 +144,54 @@ RSpec.describe "tampering with a chained ledger" do
                                                                  ])
     expect(result.totals).to include(digest_mismatch: 3, missing: 1)
   end
+
+  # specs/002 T032 / SC-001: the spec's "Not detected" list. Each of these verifies intact
+  # (or reports no chain) although the ledger was changed — pinned here so a limit can no
+  # more change silently than a guarantee can.
+  describe "what is not detected, by design" do
+    let(:canonical) { Reeve::Audit::Chain::Canonical }
+    let(:record) { Reeve::Audit::ChainRecord }
+
+    # Limit 1: the chain is exactly as strong as the separation of key and database.
+    it "NOT DETECTED: someone holding the key edits a row and re-signs every row after it" do
+      at(5).update_all(rule: "AdminPolicy#index?")
+      previous = at(4).first.chain_digest
+      (5..8).each do |sequence|
+        digest = canonical.entry_digest(Ledger::TEST_KEY, at(sequence).first, previous_digest: previous)
+        at(sequence).update_all(chain_digest: digest)
+        previous = digest
+      end
+      record.update_all(head_digest: previous)
+
+      expect(verify.status).to eq(:intact)
+    end
+
+    # Limit 2: only an anchor outside the database can catch this (future work).
+    it "NOT DETECTED: the newest rows deleted and the head rewound to the row before them" do
+      entries.where("chain_sequence > 6").delete_all
+      record.update_all(head_sequence: 6, head_digest: at(6).first.chain_digest)
+
+      expect(verify.status).to eq(:intact)
+      expect(verify.covered).to eq(1..6)
+    end
+
+    # Limit 3: reported as no chain — never as a pass, but indistinguishable from a ledger
+    # that was never chained.
+    it "NOT DETECTED as tampering, but never a pass: the whole ledger and its chain record deleted" do
+      entries.delete_all
+      record.delete_all
+
+      expect(verify.status).to eq(:no_chain)
+      expect(verify).not_to be_intact
+    end
+
+    # Limit 4: an uncovered row is exactly as protected as it was before contract 3.
+    it "NOT DETECTED: a row outside the chain edited — it is counted as uncovered, and that is all" do
+      legacy = entries.create!(row(contract_version: 2))
+      entries.where(id: legacy.id).update_all(rule: "AdminPolicy#index?")
+
+      expect(verify.status).to eq(:intact)
+      expect(verify.uncovered_now).to eq(1)
+    end
+  end
 end

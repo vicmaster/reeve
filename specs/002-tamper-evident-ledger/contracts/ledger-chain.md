@@ -100,10 +100,16 @@ reeve ledger: INTACT — sequences 1–48,211 verified (head at start: 48,211); 
 
 ```text
 reeve ledger: BROKEN — 3 breaks in sequences 1–48,211; 5,000 earlier entries not covered (4,998 when the chain started)
-  totals: digest_mismatch 1, missing 2
+  totals: digest_mismatch 2, missing 1
   #1,204        digest_mismatch  does not verify at its position — its content, its sequence number or its predecessor changed
-  #3,310–3,311  missing
+  #3,310–3,311  missing          2 entries not found
+  #3,312        digest_mismatch  does not verify at its position — its content, its sequence number or its predecessor changed
 ```
+
+Totals count breaks, one per line: a gap is one `missing` break whose range shows how many
+entries it spans. A gap always breaks the link of the entry after it, so it is followed by
+a `digest_mismatch` there. (Corrected during US2: an earlier version of this example showed
+a gap with no mismatch after it, and counted the gap's entries rather than the break.)
 
 ```text
 reeve ledger: BROKEN — 1 break in sequences 1–48,211; 5,000 earlier entries not covered (5,000 when the chain started)

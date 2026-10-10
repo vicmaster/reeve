@@ -103,4 +103,126 @@ RSpec.describe Reeve::Audit::Chain::Verifier do
       expect(result.breaks.map { |b| [b.kind, b.sequence] }).to include([:beyond_head, 4])
     end
   end
+
+  # specs/002 T030 / FR-012, FR-014, data-model "Status rules": each ledger reported for
+  # what it is, and none of them as a pass unless it is one.
+  describe "status" do
+    let(:other_key) { "another-ledger-key-not-a-secret-0123456789" }
+
+    # A row as 0.5.0 wrote it, or as :warn writes one with no key: around the chain.
+    def unchained!(contract_version:, occurred_at: Time.now)
+      Reeve::Audit::Entry.create!(row(contract_version: contract_version, occurred_at: occurred_at))
+    end
+
+    def call
+      Reeve::Audit::Chain.verify
+    end
+
+    it "is unverifiable with no key, and claims nothing else" do
+      3.times { chain.append!(row) }
+      Reeve.config.ledger_key = nil
+
+      result = call
+
+      expect(result.status).to eq(:unverifiable)
+      expect(result.reason).to eq(:no_key)
+      expect(result.covered).to be_nil
+      expect(result.breaks).to be_empty
+      expect(result).not_to be_intact
+    end
+
+    it "is no_chain when nothing was ever chained, and counts what is there" do
+      2.times { unchained!(contract_version: 2) }
+
+      result = call
+
+      expect(result.status).to eq(:no_chain)
+      expect(result.uncovered_now).to eq(2)
+      expect(result).not_to be_intact
+    end
+
+    # A host on :warn ran without a key, then configured one. Those rows predate the chain.
+    it "counts unchained contract-3 rows from before the chain as uncovered, not as breaks" do
+      unchained!(contract_version: 3, occurred_at: Time.now - 60)
+      2.times { chain.append!(row) }
+
+      result = call
+
+      expect(result.status).to eq(:intact)
+      expect(result.unchained_now).to eq(1)
+      expect(result.unchained_at_genesis).to eq(1)
+    end
+
+    it "reports an unchained contract-3 row written after the chain started, by invocation_id" do
+      2.times { chain.append!(row) }
+      late = unchained!(contract_version: 3, occurred_at: Time.now + 1)
+
+      result = call
+
+      expect(result.status).to eq(:broken)
+      unchained = result.breaks.select { |b| b.kind == :unchained }
+      expect(unchained.map(&:invocation_id)).to eq([late.invocation_id])
+      expect(unchained.first.sequence).to be_nil
+      expect(unchained.first.detail).to include("by clock")
+    end
+
+    # The count is the safeguard, not the clock: a row written before the chain began by a
+    # server whose clock runs ahead still predates the chain, and must not read as a break.
+    it "trusts the count over a skewed clock for rows from before the chain" do
+      unchained!(contract_version: 3, occurred_at: Time.now + 3600)
+      chain.append!(row)
+
+      expect(call.status).to eq(:intact)
+    end
+
+    # And once the count is exceeded, the clock narrows which rows to name: the ones from
+    # before the chain are not listed alongside the new one.
+    it "names only the unchained rows written after the chain started" do
+      unchained!(contract_version: 3, occurred_at: Time.now - 60)
+      chain.append!(row)
+      late = unchained!(contract_version: 3, occurred_at: Time.now + 1)
+
+      expect(call.breaks.select { |b| b.kind == :unchained }.map(&:invocation_id)).to eq([late.invocation_id])
+    end
+
+    it "is unverifiable — not intact, not tampered — for rows signed by a key it does not hold" do
+      Reeve.config.ledger_key = other_key
+      2.times { chain.append!(row) }
+      Reeve.config.ledger_key = Ledger::TEST_KEY
+      chain.append!(row)
+
+      result = call
+
+      expect(result.status).to eq(:unverifiable)
+      expect(result.unverifiable_count).to eq(3) # two rows and the genesis they hang from
+      expect(result.breaks.map(&:kind).uniq).to eq([:unknown_key])
+    end
+
+    it "verifies rows signed by a retired key" do
+      Reeve.config.ledger_key = other_key
+      2.times { chain.append!(row) }
+      Reeve.config.ledger_key = Ledger::TEST_KEY
+      Reeve.config.retired_ledger_keys = [other_key]
+      chain.append!(row)
+
+      result = call
+
+      expect(result.status).to eq(:intact)
+      expect(result.covered).to eq(1..3)
+    end
+
+    # Servers still on 0.5.0 keep writing contract-2 rows during a rolling deploy. They are
+    # uncovered by definition; calling them tampering would make every deploy an attack.
+    it "stays intact through a rolling deploy, reporting the uncovered count then and now" do
+      unchained!(contract_version: 2)
+      chain.append!(row)
+      2.times { unchained!(contract_version: 2) }
+
+      result = call
+
+      expect(result.status).to eq(:intact)
+      expect(result.uncovered_at_genesis).to eq(1)
+      expect(result.uncovered_now).to eq(3)
+    end
+  end
 end
