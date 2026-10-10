@@ -517,4 +517,4 @@ is for:
 - Adding a nullable ledger column is minor and leaves the audit-entry contract version
   alone. Removing or renaming a column, or changing what a value means, is major and bumps
   it.
-- The audit-entry contract version is `2`.
+- The audit-entry contract version is `3`.
