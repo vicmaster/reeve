@@ -41,6 +41,7 @@ Checks shipped in v1:
 | `Checks::PrincipalRequired` | no resolvable principal denies without consulting the policy | FR-001 |
 | `Checks::ContractVersion` | the ledger the host migrated implements the shape this gem version writes | FR-015 |
 | `Checks::EndpointCoverage` | every tool the server registers is routed through reeve and guarded, or exempted with a reason — and the run covered all of them | issue #20 |
+| `Checks::LedgerChain` | the audit ledger's chain verifies intact, after the run writes entries of its own | specs/002 FR-018 |
 
 **On `EndpointCoverage` (added 2026-10-01)**: every other check walks a population reeve
 assembled itself, so a tool the host dispatches without ever handing it to reeve is absent
@@ -54,6 +55,13 @@ run is a subset by its own account. A skipped result is counted and printed in a
 `ComplianceAssertions`, and never counted as a pass. It fails when the run claimed the
 whole endpoint and a registered tool bypasses reeve, reaches it unguarded, or the inventory
 names a tool the server does not register.
+
+**On `LedgerChain` (specs/002)**: it writes an entry of its own per fixture principal,
+through the first compliance tool, then verifies the whole ledger the run can see. Passed
+only on an intact chain, with the verification's summary line as its message. Failed on a
+broken or unverifiable chain, an unchained entry, a missing ledger key, or an entry it could
+not write. Skipped — saying the chain was not verified — when there is no compliance tool
+to write with or no ledger loaded. It is the second check that can be skipped.
 
 **On `ContractVersion` (corrected 2026-08-11)**: this originally said "the *recorded*
 contract version matches the gem", which is not checkable — there is no `contract_version`

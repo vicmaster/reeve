@@ -15,12 +15,17 @@ unchained rows do not collide. The index also orders the verification walk.
 
 ### How a row is classified
 
-| `contract_version` | `chain_digest` | Classification | Effect on verification |
+| `contract_version` | `chain_sequence` | Classification | Effect on verification |
 |---|---|---|---|
 | 1 or 2 | NULL | **uncovered** | Counted beside the status; never part of a pass, never a break. |
-| 3 | present | **chained** | Verified. |
-| 3 | NULL | **unchained** | Written under `:warn` with no key, or by a host recorder that did not chain. Those that existed when the chain started (`pre_chain_unchained_count`) are reported as uncovered. Any beyond that count are `unchained` breaks: no older reeve writes contract 3, so they can only postdate the genesis. They have no sequence and are identified by `invocation_id`. Which of them are the new ones cannot be known exactly, so the report lists those with `occurred_at` after `genesis_at` and says that this is by clock. |
-| 1 or 2 | present | **inconsistent** | A break (`digest_mismatch` at its sequence). reeve never writes this; it means the row was altered. |
+| 3 | present | **chained** | Walked and verified. A missing or wrong digest is a `digest_mismatch`. |
+| 3 | NULL | **unchained** | Outside the walk, whatever its digest column holds — a digest without a sequence is not a link. Written under `:warn` with no key, or by a host recorder that did not chain. Those that existed when the chain started (`pre_chain_unchained_count`) are reported as uncovered. Any beyond that count are `unchained` breaks: no older reeve writes contract 3, so they can only postdate the genesis. Identified by `invocation_id`; which of them are the new ones cannot be known exactly, so the report lists those with `occurred_at` after `genesis_at` and says that this is by clock. |
+| 1 or 2 | present | **inconsistent** | Walked; a `digest_mismatch` at its sequence, since no contract-2 row is ever chained. reeve never writes this; it means the row was altered. |
+
+The predicate for "unchained" is `Reeve::Audit::Chain::UNCHAINED`, used by both the genesis
+baseline and the verifier. It keys on the missing *sequence*: the code review found that a
+forged contract-3 row with a digest but no sequence, keyed on the missing digest, sat
+outside every count.
 
 ### Canonical entry (input to `chain_digest`)
 
@@ -55,7 +60,7 @@ the field list they were written with.
 | `name` | string | no | once | Always `"ledger"`. Unique index: two writers racing to start the chain cannot both succeed. |
 | `genesis_at` | datetime(6) | no | once | When the chain started. |
 | `pre_chain_count` | bigint | no | once | Rows with `contract_version < 3` when the chain started. Informational (R5). |
-| `pre_chain_unchained_count` | bigint | no | once | Contract-3 rows with no digest when the chain started (`:warn` without a key). The baseline for `unchained` breaks (R5). |
+| `pre_chain_unchained_count` | bigint | no | once | Contract-3 rows outside the chain (no sequence) when the chain started (`:warn` without a key). The baseline for `unchained` breaks (R5). |
 | `genesis_key_id` | string(16) | no | once | Key that signed the genesis. |
 | `genesis_digest` | string(64) | no | once | HMAC over `reeve-ledger-genesis-v1 ‖ genesis_at ‖ pre_chain_count ‖ pre_chain_unchained_count ‖ genesis_key_id`. Link 0. |
 | `head_sequence` | bigint | no | every chained write | Latest sequence assigned. 0 between creation and the first insert (in the same transaction, so never visible as 0). |
@@ -99,7 +104,7 @@ There is no other transition.
 | `totals` | Count per kind, never capped |
 | `head_at_start` | The head sequence verification walked to |
 | `head_at_end` | The head re-read after the walk; chained rows above it are `beyond_head` |
-| `unchained_now` / `unchained_at_genesis` | Contract-3 rows with no digest, now and at genesis |
+| `unchained_now` / `unchained_at_genesis` | Contract-3 rows outside the chain (no sequence), now and at genesis |
 
 `totals` counts breaks per kind, one per break; a gap is one `missing` break whose range
 shows the entries it spans.

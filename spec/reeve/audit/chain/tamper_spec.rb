@@ -115,6 +115,17 @@ RSpec.describe "tampering with a chained ledger" do
     expect(verify.breaks.map(&:kind)).to include(:genesis_altered)
   end
 
+  # Review finding: a contract-3 row with a digest but no sequence sat outside the walk,
+  # outside the unchained count and outside the uncovered count — invisible.
+  it "detects a forged contract-3 row that has a digest but no sequence" do
+    entries.insert_all!([row(chain_sequence: nil, chain_key_id: Reeve.config.ledger_key_id,
+                             chain_digest: "c" * 64, invocation_id: "inv-forged-no-sequence")])
+
+    expect(verify.status).to eq(:broken)
+    expect(verify.breaks.select { |b| b.kind == :unchained }.map(&:invocation_id))
+      .to include("inv-forged-no-sequence")
+  end
+
   describe "a row forged one past the head" do
     before do
       entries.insert_all!([row(chain_sequence: 9, chain_key_id: Reeve.config.ledger_key_id,

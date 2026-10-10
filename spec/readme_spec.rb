@@ -62,6 +62,25 @@ RSpec.describe "README examples" do
       expect(defined?(Reeve::Testing::ComplianceAssertions)).to be_truthy
     end
 
+    # specs/002 FR-017, Constitution VI: every public entry point of the ledger chain is
+    # shown in the README, and each one shown exists.
+    it "names ledger-chain entry points that exist" do
+      require "reeve/audit"
+      require "reeve/tasks"
+
+      expect(README).to include("Reeve::Audit::Chain.verify", "bin/rails reeve:verify_ledger",
+                                "config.ledger_key", "config.retired_ledger_keys", ".append!(row)")
+      expect(Reeve::Audit::Chain).to respond_to(:verify)
+      expect(Reeve::Audit::Chain.instance_method(:append!).arity).to eq(1)
+      expect(Reeve::Audit::Chain::Verification.public_instance_methods)
+        .to include(:status, :covered, :to_s)
+      expect(Reeve::Tasks).to respond_to(:verify_ledger, :define)
+    end
+
+    it "states the chain's limits, not only its guarantees" do
+      expect(README).to include("**Not detected**", "A leaked key", "prevents nothing")
+    end
+
     it "states the platform floor the gemspec enforces" do
       expect(README).to include("Ruby 3.0+")
       expect(Gem::Specification.load("reeve.gemspec").required_ruby_version.to_s)

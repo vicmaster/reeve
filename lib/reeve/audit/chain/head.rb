@@ -80,7 +80,7 @@ module Reeve
             genesis_at: Time.now.utc.floor(6),
             pre_chain_count: entry_class.where("contract_version < 3").count,
             pre_chain_unchained_count:
-              entry_class.where("contract_version >= 3 AND chain_digest IS NULL").count,
+              entry_class.where(UNCHAINED).count,
             genesis_key_id: signer.signing_id
           }
         end

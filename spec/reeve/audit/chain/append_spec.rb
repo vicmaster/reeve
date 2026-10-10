@@ -66,6 +66,18 @@ RSpec.describe "Reeve::Audit::Chain#append!" do
       expect(entries.first.truncated).to be(false)
     end
 
+    # Review finding: a host recorder may build its row with string keys (FR-007).
+    it "normalizes and replays a row given with string keys" do
+      stringly = row(invocation_id: "inv-strings", arguments: { since: Time.utc(2026, 1, 1) })
+                 .transform_keys(&:to_s)
+
+      first = chain.append!(stringly)
+      again = chain.append!(stringly)
+
+      expect(again.id).to eq(first.id)
+      expect(Reeve::Audit::Chain.verify.status).to eq(:intact)
+    end
+
     it "returns the entry it wrote" do
       entry = chain.append!(row(invocation_id: "inv-returned"))
 

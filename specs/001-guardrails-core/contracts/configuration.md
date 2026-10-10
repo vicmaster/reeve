@@ -47,6 +47,13 @@ Reeve.configure do |config|
   # reeve, which are exempt and why. Read by the compliance suite's EndpointCoverage.
   config.inventory = Reeve::Inventory.new(registered: -> { McpServer.tool_names },
                                           routed: -> { { "search_invoices" => InvoiceSearchTool } })
+
+  # The key that chains the audit ledger (specs/002). Outside the database by design. The
+  # generated initializer derives it from secret_key_base; a dedicated key also works.
+  config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)
+
+  # Keys that signed older entries: used to verify, never to sign (specs/002 FR-011).
+  config.retired_ledger_keys = []
 end
 ```
 
@@ -59,7 +66,8 @@ end
 - `configure` may be called more than once; later calls override individual settings.
 - Unknown setting names raise `NoMethodError` at configure time, not silently no-op.
 - Every setting is readable at runtime (`config.unguarded_tools`) for the compliance suite
-  to assert against.
+  to assert against. The ledger keys are the exception in one respect: `to_h` and `inspect`
+  show their fingerprints, never the secrets, and `ledger_key_id` is the current key's.
 - `audit_recorder` has two built-in values. `Reeve::Audit::Recorder` (the default) writes
   in a savepoint on the host's connection: the trace survives a rollback by the *tool*,
   and it warns when it detects a transaction the *host* wrapped around the invocation,
@@ -81,7 +89,9 @@ end
 - A custom `audit_recorder` receives the same attributes the built-in one does and owns
   what it writes. If it writes to `Reeve::Audit::Entry`, it must set `contract_version`
   from `Reeve::Audit::CONTRACT_VERSION` — the model rejects a row that does not name its
-  own shape (contract 2). It is also responsible for redaction: the attributes reach a
+  own shape (contract 2), and from contract 3 it must write through
+  `Reeve::Audit::Chain#append!`, or verification reports its rows as unchained. It is
+  also responsible for redaction: the attributes reach a
   recorder unredacted, which is what makes `Checks::RedactionHolds` a real check rather
   than a formality.
 
@@ -94,4 +104,6 @@ end
 | `max_recorded_ids` | `< 1`, non-integer | `ArgumentError` at assignment |
 | `principal_resolver` | non-callable | `ArgumentError` at assignment |
 | `inventory` | anything but a `Reeve::Inventory` or nil | `ArgumentError` at assignment |
+| `ledger_key` | blank, non-String, or under 32 bytes; a key also listed as retired | `ArgumentError` at assignment, never echoing the value |
+| `retired_ledger_keys` | non-Array; any member blank, non-String or under 32 bytes; the current `ledger_key` | `ArgumentError` at assignment |
 | `policy_adapter` | symbol other than the three, or object missing `authorize`/`scope` | `ArgumentError` at assignment |

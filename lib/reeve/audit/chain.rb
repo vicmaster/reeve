@@ -40,6 +40,14 @@ module Reeve
 
       COLUMNS = %w[chain_sequence chain_key_id chain_digest].freeze
 
+      # A contract-3 row outside the chain: the walk only reads rows with a sequence, so a
+      # row without one is counted here or nowhere. Written once and used by both the
+      # genesis (the baseline it records) and the verifier (the count it compares), because
+      # the baseline means something only while the two count the same rows. It keys on the
+      # missing sequence, not the missing digest: a forged row with a digest and no sequence
+      # once sat outside every count.
+      UNCHAINED = "contract_version >= 3 AND chain_sequence IS NULL"
+
       # Verifies the whole ledger. With `keys:`, verifies with those keys alone — how an
       # auditor checks a ledger with their own copy of the key.
       def self.verify(keys: nil, entry_class: Entry, batch_size: Verifier::BATCH_SIZE)

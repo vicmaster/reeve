@@ -369,7 +369,7 @@ against each US2 ledger.
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T049 [P] Apply contracts/audit-entry-v3.md to
+- [x] T049 [P] Apply contracts/audit-entry-v3.md to
       `specs/001-guardrails-core/contracts/audit-entry.md`. Add the two settings to
       `specs/001-guardrails-core/contracts/configuration.md` and `LedgerChain` to
       `specs/001-guardrails-core/contracts/testing-kit.md`. Add the `ledger_key` step to
@@ -377,10 +377,10 @@ against each US2 ledger.
       follow step by step
       PARTLY DONE in Phase 2: the audit-entry.md change landed with T016, because
       `contract_version_spec.rb` ties the constant to the version that document states
-- [ ] T050 [P] Rewrite the "What it does not" section of `lib/reeve/audit.rb` per
+- [x] T050 [P] Rewrite the "What it does not" section of `lib/reeve/audit.rb` per
       audit-entry-v3.md. Then `grep -rn "cryptographic chaining" lib/ specs/ README.md` and
       fix every remaining claim that chaining does not exist
-- [ ] T051 [P] Add a README section for the ledger chain. It must give the spec's
+- [x] T051 [P] Add a README section for the ledger chain. It must give the spec's
       "Detected"/"Not detected" lists, the same in substance; the rake task and exit
       statuses; key rotation and the `secret_key_base` coupling; and the lock-contention
       note with `IsolatedRecorder` as the answer. The contention note must state each
@@ -393,7 +393,7 @@ against each US2 ledger.
       `config.retired_ledger_keys`, `Reeve::Audit::Chain.verify`, `Chain#append!` (for
       custom recorders) and `bin/rails reeve:verify_ledger`. Extend the API assertions in
       `spec/readme_spec.rb` to name each, and keep it green
-- [ ] T052 [P] Add an Unreleased entry to `CHANGELOG.md`. It must cover:
+- [x] T052 [P] Add an Unreleased entry to `CHANGELOG.md`. It must cover:
       - contract 2 → 3 and why it is MAJOR;
       - the three upgrade steps;
       - "Breaking for custom recorders" (`Chain#append!`);
@@ -402,7 +402,7 @@ against each US2 ledger.
       - the new skip in the compliance suite.
 
       Name no consumer project
-- [ ] T053 Write `specs/002-tamper-evident-ledger/verification.md`, mapping SC-001–SC-007 to
+- [x] T053 Write `specs/002-tamper-evident-ledger/verification.md`, mapping SC-001–SC-007 to
       their specs with a "Known gaps" section, and extend `spec/reeve/verification_spec.rb`
       to check this map as it checks 001's
 - [ ] T054 Rerun the T002 benchmark with chaining. Add a `:benchmark` fixture builder to
@@ -410,14 +410,20 @@ against each US2 ledger.
       ledger through `Chain#append!` in batched transactions. Then measure SC-004 (verify
       1M rows; peak memory at 100k vs 1M) and SC-005 on each engine. Record the results in
       verification.md; if a target is missed, say so there and in the spec
+      DONE, and SC-004's time is MISSED on PostgreSQL (331 s vs 300 s); memory flat on both.
+      Recorded in verification.md and spec.md. Fixing the walk's keyset query is the next change
 - [ ] T055 Run the full suite on SQLite locally and confirm the PostgreSQL, MySQL, Ruby 3.0
       floor and RuboCop jobs pass in CI
-- [ ] T056 Run `/code-review` on the branch. Give `canonical.rb`, `chain.rb` and
+- [x] T056 Run `/code-review` on the branch. Give `canonical.rb`, `chain.rb` and
       `verifier.rb` the scrutiny `scoper.rb` got in 0.1.0. Re-verify red, by reverting the
       behaviour each pins: every tamper example, the sequencing, replay and rollback
       examples in `append_spec.rb`, and the no-key matrix in `failure_mode_spec.rb`
       (FR-023)
-- [ ] T057 `gem build reeve.gemspec` and list the packaged files. Confirm `railtie.rb`,
+      DONE: nine findings, six fixed test-first (a forged row with a digest and no sequence
+      read intact; the beyond-head race; LedgerChain passing without writing; string-keyed
+      rows; the duplicated predicate; Rake's DSL on Reeve::Tasks) plus a refusal for a ledger
+      on its own database; two left with reasons in verification.md Known gaps
+- [x] T057 `gem build reeve.gemspec` and list the packaged files. Confirm `railtie.rb`,
       `tasks.rb`, every `chain/*.rb` file and both migration templates are inside. Do not
       commit the `.gem`
 

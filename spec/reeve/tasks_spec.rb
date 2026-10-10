@@ -106,6 +106,17 @@ RSpec.describe "reeve:verify_ledger" do
     end
   end
 
+  # Review finding: defining the task must not leave Rake's DSL on Reeve::Tasks.
+  it "defines the task without giving Reeve::Tasks Rake's methods" do
+    Rake.application = Rake::Application.new
+    Reeve::Tasks.define
+
+    expect(Reeve::Tasks).not_to respond_to(:task)
+    expect(Reeve::Tasks.singleton_class.include?(Rake::DSL)).to be(false)
+  ensure
+    Rake.application = Rake::Application.new
+  end
+
   # Through Rake itself: the task exists under the name the contract gives it, depends on
   # :environment as a Rails task does, and exits with the status verify_ledger returned.
   it "is defined as a Rake task that exits with the verification's status" do

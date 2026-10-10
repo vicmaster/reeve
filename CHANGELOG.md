@@ -4,6 +4,92 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
+## [Unreleased]
+
+The ledger has been append-only at the library level since 0.1.0: no API updates or deletes
+an entry, and the generated migration documents the grant that enforces the rest. Nothing
+*detected* a change made outside the library. A DBA, a stolen application credential or a
+well-meant data fix could edit, delete or reorder rows, and the ledger read exactly as
+before. Now every row is chained to the one before it with a keyed digest, and
+`bin/rails reeve:verify_ledger` reports every place the chain no longer holds.
+
+**Audit-entry contract `2` → `3`, and a migration is required.** The new columns are
+nullable, so the shape change is additive; the bump is MAJOR by the contract's own rule,
+because what an absence means changed. On a contract 1–2 row a NULL digest means "written
+before chaining"; on a contract-3 row it means the row was written unchained, which
+verification reports. Upgrading is three steps:
+
+```bash
+bin/rails generate reeve:upgrade
+bin/rails db:migrate
+```
+
+then add the line the generator prints to `config/initializers/reeve.rb`:
+
+```ruby
+config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)
+```
+
+Existing rows are not touched. They are reported as "not covered" from then on, and are
+exactly as trustworthy as they were before.
+
+What this detects and what it does not are set out in the README, under "Tamper-evident,
+within stated limits". In short, it does **not** detect a change made by someone holding
+the key; the newest rows deleted by someone who also rewinds the chain record's head; the
+whole ledger deleted (reported as *no chain*, never as a pass); or anything about rows
+written before the upgrade. It detects; it does not prevent.
+
+Behaviour changes worth reading before upgrading:
+
+- **A ledger key is required.** Without one, every guarded call fails with
+  `Reeve::AuditWriteError` (cause `Reeve::LedgerKeyError`, naming the setting). Under
+  `audit_failure_mode = :warn` the call goes through and the row is written *unchained*, a
+  warning is logged on every such write, and verification reports the row.
+- **Rotating `secret_key_base` rotates the ledger key**, if you keep the generated line. Put
+  the old derived key in `config.retired_ledger_keys`, or entries it signed become
+  unverifiable — reported as such, never as tampered. A dedicated key avoids the coupling.
+- **Writes serialize on the chain record.** About 0.5 ms more per ledger write on SQLite and
+  about 1 ms on PostgreSQL. Under the default recorder inside a transaction the host opened,
+  the lock is held until that transaction ends; `IsolatedRecorder` holds it for one insert.
+- **Rails 7.0 with SQLite:** sqlite3 1.x waits for the write lock while holding Ruby's GVL,
+  so concurrent guarded calls in one process can fail closed after the busy timeout. Rails
+  7.1+ or a server database avoids it. The limit predates this release; the chain's longer
+  write makes it likelier.
+- **The compliance suites run one more check, `LedgerChain`.** It writes an entry of its own
+  and fails without a key, on a broken or unverifiable chain, or on unchained entries. It is
+  skipped, saying so, when there is no compliance tool to write with or no ledger loaded.
+  The test environment needs the key line too; the generated one works there unchanged.
+- **Breaking for custom recorders** that write to `Reeve::Audit::Entry`: rows must be written
+  through `Reeve::Audit::Chain#append!` (or `#append_unchained!` to keep running without a
+  key), or verification reports them as unchained.
+- **A table still at contract 2** now fails with `Reeve::ConfigurationError` naming
+  `reeve:upgrade`, instead of a column error from inside the write.
+- **Known limit, MySQL:** a number in a tool's arguments beyond double precision is stored
+  rounded by MySQL's `JSON` type, and its row then fails to verify. A false alarm, never a
+  false pass.
+- **During a rolling deploy**, servers still on 0.5.0 keep writing contract-2 rows. They
+  are counted as not covered, not reported as tampering.
+
+### Added
+
+- **The ledger chain** (`Reeve::Audit::Chain`). Every entry carries a sequence number, the
+  16-character fingerprint of the key that signed it, and an HMAC-SHA256 digest over its
+  canonical form and its predecessor's digest. The digest is computed over the values the
+  database stores — defaults, casts and JSON normalization included — so a row verifies
+  after a dump and restore with every primary key renumbered.
+- **`Reeve::Audit::Chain.verify`** (optionally with `keys:`, for an auditor's own copy of the
+  key) and **`bin/rails reeve:verify_ledger`**, registered by a Railtie that loads only when
+  Rails is present. Exit status `0` intact, `1` broken, `2` could not verify; `LIMIT=` caps
+  the breaks listed, never the totals; `FORMAT=json` writes every break. Every line that
+  says *intact* or *pass* states the covered range and the uncovered count beside it.
+  `Reeve::Tasks.verify_ledger` is the same check without Rake.
+- **`config.ledger_key`** and **`config.retired_ledger_keys`**, validated at assignment (32
+  bytes minimum) and shown only as fingerprints in `to_h`, `inspect`, logs and reports.
+- **`Checks::LedgerChain`**, in both compliance suites.
+- **`reeve:upgrade`**'s contract-3 step, which prints the initializer line, the rotation
+  warning and how to build the new index concurrently on a large PostgreSQL ledger. A step
+  now counts as applied only when its columns and its tables both exist.
+
 ## [0.5.0] - 2026-10-01
 
 Reeve protects the tools routed through it, and only those. A server that registers its
