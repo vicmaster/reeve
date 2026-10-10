@@ -165,9 +165,8 @@ RSpec.describe Reeve::Testing::Assertions, :reeve_fixtures do
 
     it "skips every per-tool method, with its reason, when there is no tool to check" do
       Reeve.reset_registry!
-      per_tool = reeve_test_methods(test_case) - %w[
-        test_reeve_contract_version test_reeve_endpoint_coverage test_reeve_ledger_chain
-      ]
+      global = Reeve::Checks::GLOBAL.map { |check| "test_reeve_#{check.check_name.gsub(/([a-z])([A-Z])/, '\\1_\\2').downcase}" }
+      per_tool = reeve_test_methods(test_case) - global
 
       expect(per_tool.size).to eq(6)
       per_tool.each do |method|

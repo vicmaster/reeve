@@ -152,7 +152,7 @@ RSpec.describe "the shared group with no tools to check", :reeve_fixtures do
     statuses = group.descendants.flat_map(&:examples).to_h do |example|
       [example.description[/satisfies (\w+)/, 1], example.execution_result]
     end
-    per_tool = statuses.except("ContractVersion", "EndpointCoverage", "LedgerChain")
+    per_tool = statuses.except(*Reeve::Checks::GLOBAL.map(&:check_name))
 
     expect(per_tool.size).to eq(6)
     expect(per_tool.values.map(&:status)).to all(eq(:pending))

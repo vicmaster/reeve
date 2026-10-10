@@ -77,9 +77,8 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
     Reeve.reset_registry!
 
     report = run_all
-    per_tool = report.results.reject do |result|
-      %w[ContractVersion EndpointCoverage LedgerChain].include?(result.check)
-    end
+    global = Reeve::Checks::GLOBAL.map(&:check_name)
+    per_tool = report.results.reject { |result| global.include?(result.check) }
 
     # One skip for each of the six per-tool checks, plus the three ledger-wide checks, of
     # which only ContractVersion establishes anything: the ledger's shape needs no tool.
@@ -91,6 +90,17 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
     expect(per_tool).to all(be_skipped)
     expect(report.passes.map(&:check)).to eq(["ContractVersion"])
     expect(report).not_to be_skipped
+    # passed? only means nothing failed, so it is still true here. nothing_checked? is how a
+    # gate with no pending or skip to show learns that the run examined nothing.
+    expect(report).to be_passed
+    expect(report).to be_nothing_checked
+  end
+
+  it "has something checked over a registry with tools, even with endpoint coverage skipped" do
+    report = run_all(tools: [ReeveFixtures::CompliantInvoiceTool])
+
+    expect(report.skips.map(&:check)).to include("EndpointCoverage")
+    expect(report).not_to be_nothing_checked
   end
 
   # A per-tool check over no tools establishes nothing, and a Report of no results reads as

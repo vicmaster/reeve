@@ -328,11 +328,13 @@ script, or a boot-time assertion in staging:
 require "reeve/testing"
 
 report = Reeve::Checks.run_all(principals: [alice, bob])
-abort report.to_s unless report.passed?
+abort report.to_s if report.failed? || report.nothing_checked?
 ```
 
 `alice` and `bob` are two fixture principals with disjoint records — that disjointness is
-what makes a shared record identifier proof of a leak.
+what makes a shared record identifier proof of a leak. `passed?` only means nothing failed,
+so a run over no tools at all passes; `nothing_checked?` is what stops this gate when the
+registry is empty, since a script has no pending test to show it.
 
 **The suite walks every tool that included `Reeve::Guard`, not only the ones that declared
 a guard.** A tool that forgot `guard_with` is the one worth finding, and it is absent from
@@ -362,7 +364,7 @@ namespace :reeve do
     require "reeve/testing"
 
     report = Reeve::Checks.run_all(principals: Reeve::Testing.compliance_principals)
-    abort report.to_s unless report.passed?
+    abort report.to_s if report.failed? || report.nothing_checked?
     puts report
   end
 end

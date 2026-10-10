@@ -20,7 +20,7 @@ module Reeve
     # the same violation reads identically from either — and from neither:
     #
     #   report = Reeve::Checks.run_all(principals: [alice, bob])
-    #   abort report.to_s unless report.passed?
+    #   abort report.to_s if report.failed? || report.nothing_checked?
     #
     # Nothing here loads a test framework (FR-026).
     module Checks
