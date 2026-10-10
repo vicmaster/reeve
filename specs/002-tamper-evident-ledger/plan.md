@@ -113,6 +113,7 @@ lib/reeve/audit/chain/canonical.rb             # NEW: canonical form + digest (R
 lib/reeve/audit/chain/verifier.rb              # NEW: record, head, genesis and unchained checks (R6)
 lib/reeve/audit/chain/walk.rb                  # NEW: the keyset row-by-row walk, split from the verifier
 lib/reeve/audit/chain/report.rb                # NEW: a Verification in words (summary, totals, aligned breaks)
+lib/reeve/audit/chain/head.rb                  # NEW: the chain record's head, advanced under its lock (R3)
 lib/reeve/audit/chain/verification.rb          # NEW: result, Break, to_s, as_json
 lib/reeve/audit/chain_record.rb                # NEW: model for reeve_audit_chains
 lib/reeve/audit/recorder.rb                    # writes through Chain; :warn/no-key path; column check

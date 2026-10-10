@@ -87,3 +87,85 @@ RSpec.describe "a ledger that cannot be written" do
     end
   end
 end
+
+# specs/002 T036 / FR-010, US3 — a contract-3 ledger that cannot be chained.
+#
+# Two ways a write can be refused before it reaches the chain: no key to sign with, or a
+# table one contract behind the gem. Both go through audit_failure_mode like any other
+# failed write, and neither may surface as a database error the host has to decode.
+RSpec.describe "a ledger that cannot be chained" do
+  include Envelope
+
+  let(:logger) { CapturingLogger.new }
+  let(:chain_columns) { %w[chain_sequence chain_key_id chain_digest] }
+
+  before do
+    Ledger.prepare!
+    Reeve.config.logger = logger
+  end
+
+  describe "with no ledger key" do
+    before { Reeve.config.ledger_key = nil }
+
+    it "fails the call under :fail, with the key's absence as the cause" do
+      expect { invoke(invocation_id: "inv-no-key") { %w[a] } }.to raise_error(Reeve::AuditWriteError) { |error|
+        expect(error.original_error).to be_a(Reeve::LedgerKeyError)
+        expect(error.message).to include("inv-no-key").and include("config.ledger_key")
+      }
+      expect(entries.count).to eq(0)
+    end
+
+    # :warn keeps calls running; it does not drop traces. The row is written, at contract
+    # 3, with no chain — which verification reports — and the log says so every time.
+    it "lets the call through under :warn, writing the row unchained and saying so each time" do
+      Reeve.config.audit_failure_mode = :warn
+
+      2.times { |i| expect(invoke(invocation_id: "inv-warn-#{i}") { %w[a] }).to eq(%w[a]) }
+
+      expect(entries.count).to eq(2)
+      expect(entries.pluck(*chain_columns)).to all(eq([nil, nil, nil]))
+      expect(entries.pluck(:contract_version).uniq).to eq([Reeve::Audit::CONTRACT_VERSION])
+      expect(logger.warnings.grep(/unchained/).size).to eq(2)
+      expect(logger.warnings.join).to include("inv-warn-0").and include("config.ledger_key")
+    end
+
+    it "takes no chain lock and starts no chain while writing unchained" do
+      Reeve.config.audit_failure_mode = :warn
+
+      invoke { [] }
+
+      expect(Reeve::Audit::ChainRecord.count).to eq(0)
+    end
+  end
+
+  # A host that upgraded the gem and has not run reeve:upgrade yet.
+  describe "on a table still at contract 2" do
+    before do
+      chain_columns.each { |column| ActiveRecord::Base.connection.remove_column(:reeve_audit_entries, column) }
+      Reeve::Audit::Entry.reset_column_information
+    end
+
+    # Dropped rather than migrated down: the down migration expects the index this example
+    # removed along with its column. prepare! rebuilds a missing ledger from the template.
+    after do
+      ActiveRecord::Base.connection.drop_table(:reeve_audit_entries, if_exists: true)
+      Ledger.prepare!
+    end
+
+    it "names the missing upgrade and the command that performs it, not a column error" do
+      expect { invoke { [] } }.to raise_error(Reeve::AuditWriteError) { |error|
+        expect(error.original_error).to be_a(Reeve::ConfigurationError)
+        expect(error.message).to include("reeve:upgrade").and include("chain_sequence")
+        expect(error.original_error).not_to be_a(ActiveModel::UnknownAttributeError)
+      }
+    end
+
+    it "under :warn lets the call through and writes nothing, as for any failed write" do
+      Reeve.config.audit_failure_mode = :warn
+
+      expect(invoke { %w[a] }).to eq(%w[a])
+      expect(entries.count).to eq(0)
+      expect(logger.warnings.join).to include("reeve:upgrade")
+    end
+  end
+end

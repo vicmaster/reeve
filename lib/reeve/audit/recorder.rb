@@ -59,11 +59,24 @@ module Reeve
       # A replayed invocation is the same invocation: one row per invocation_id means a
       # retry returns the existing row and never writes a second (contracts/audit-entry.md).
       # Chain#append! owns that, because it must also consume no sequence number.
+      #
+      # With no ledger key (specs/002 FR-010): under :fail, Chain raises LedgerKeyError and
+      # the envelope fails the call like any other ledger failure. Under :warn the row is
+      # still written, at contract 3 and unchained, and the log says so every time —
+      # :warn keeps calls running, it does not drop traces, and verification reports the
+      # row as unchained rather than letting it pass unseen.
       def record(attributes)
         row = row_for(attributes)
         warn_about_enclosing_transaction(row[:invocation_id])
 
-        Chain.new(entry_class: entry_class).append!(row)
+        keyring = Chain::Keyring.from(config)
+        chain = Chain.new(entry_class: entry_class, keyring: keyring)
+        return chain.append!(row) if keyring.signing? || config.audit_failure_mode == :fail
+
+        warn("reeve: invocation #{row[:invocation_id]} was recorded unchained: no ledger key is " \
+             "configured and audit_failure_mode is :warn. Verification will report the row as " \
+             "unchained. Set config.ledger_key to chain the ledger.")
+        chain.append_unchained!(row)
       end
 
       private
@@ -72,6 +85,11 @@ module Reeve
 
       def config
         @config || Reeve.config
+      end
+
+      def warn(message)
+        logger = config.logger
+        logger ? logger.warn(message) : Kernel.warn(message)
       end
 
       def row_for(attributes)
@@ -159,14 +177,12 @@ module Reeve
       def warn_about_enclosing_transaction(invocation_id)
         return unless enclosing_transaction?
 
-        message = "reeve: invocation #{invocation_id} was recorded inside a transaction " \
-                  "the host opened around it, so the ledger row will be rolled back with " \
-                  "it, and the ledger chain stays locked until it ends, so every other " \
-                  "guarded call waits behind it. Set Reeve.config.audit_recorder = " \
-                  "Reeve::Audit::IsolatedRecorder to write on a connection the transaction " \
-                  "cannot reach (needs a database with concurrent writers; not SQLite)."
-        logger = config.logger
-        logger ? logger.warn(message) : Kernel.warn(message)
+        warn("reeve: invocation #{invocation_id} was recorded inside a transaction " \
+             "the host opened around it, so the ledger row will be rolled back with " \
+             "it, and the ledger chain stays locked until it ends, so every other " \
+             "guarded call waits behind it. Set Reeve.config.audit_recorder = " \
+             "Reeve::Audit::IsolatedRecorder to write on a connection the transaction " \
+             "cannot reach (needs a database with concurrent writers; not SQLite).")
       end
 
       def enclosing_transaction?

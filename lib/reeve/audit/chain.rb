@@ -38,6 +38,8 @@ module Reeve
     class Chain
       TABLE = "reeve_audit_chains"
 
+      COLUMNS = %w[chain_sequence chain_key_id chain_digest].freeze
+
       # Verifies the whole ledger. With `keys:`, verifies with those keys alone — how an
       # auditor checks a ledger with their own copy of the key.
       def self.verify(keys: nil, entry_class: Entry, batch_size: Verifier::BATCH_SIZE)
@@ -58,18 +60,27 @@ module Reeve
       # nothing. What a failure means for the caller — fail the call or warn — is the
       # caller's decision, not this method's.
       def append!(row)
+        require_columns!
         signer = keyring
         raise LedgerKeyError unless signer.signing?
 
         normalized = normalizer.call(row)
         with_connection do |connection|
-          existing = replayed(normalized)
-          next existing if existing
-
-          begin
+          insert_once(normalized) do
             entry_class.transaction(requires_new: true) { link!(connection, normalized, signer) }
-          rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
-            replayed(normalized) || raise(e)
+          end
+        end
+      end
+
+      # Writes `row` at its contract version with no chain columns, around the chain: no lock,
+      # no sequence. For a caller that has decided to keep running without a key (Recorder
+      # under audit_failure_mode :warn). Verification reports such a row as unchained.
+      def append_unchained!(row)
+        require_columns!
+        normalized = normalizer.call(row)
+        with_connection do
+          insert_once(normalized) do
+            entry_class.transaction(requires_new: true) { entry_class.create!(normalized) }
           end
         end
       end
@@ -91,66 +102,38 @@ module Reeve
       # becomes a String), and the instance is exactly what the database will be given.
       # Digesting the hash a caller passed would sign values that are never stored.
       def link!(connection, normalized, signer)
-        sequence, previous = advance_head(connection, signer)
+        head = Head.new(connection: connection, entry_class: entry_class)
+        sequence, previous = head.advance!(signer)
         entry = entry_class.new(normalized.merge(chain_sequence: sequence,
                                                  chain_key_id: signer.signing_id))
         entry.chain_digest = Canonical.entry_digest(signer.signing_secret, entry,
                                                     previous_digest: previous)
         entry.save!
-
-        digest = connection.quote(entry.chain_digest)
-        connection.update("UPDATE #{TABLE} SET head_digest = #{digest} " \
-                          "WHERE #{name_clause(connection)}")
+        head.point_at!(entry.chain_digest)
         entry
       end
 
-      # The new sequence and the digest it links to.
-      def advance_head(connection, signer)
-        if increment_head(connection).zero?
-          started = start_chain(connection, signer)
-          return started if started
-          # Another writer created the record between our UPDATE and our INSERT. Its row
-          # is committed or about to be; this UPDATE waits for it and then succeeds.
-          if increment_head(connection).zero?
-            raise ActiveRecord::StatementInvalid, "the ledger chain record vanished"
-          end
-        end
+      # A replayed invocation_id returns the row already written, whether the pre-check sees
+      # it or the insert collides with it.
+      def insert_once(normalized)
+        existing = replayed(normalized)
+        return existing if existing
 
-        head = connection.select_one("SELECT head_sequence, head_digest FROM #{TABLE} " \
-                                     "WHERE #{name_clause(connection)}")
-        [Integer(head["head_sequence"]), head["head_digest"]]
+        yield
+      rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
+        replayed(normalized) || raise(e)
       end
 
-      def increment_head(connection)
-        connection.update("UPDATE #{TABLE} SET head_sequence = head_sequence + 1 " \
-                          "WHERE #{name_clause(connection)}")
-      end
+      # A table one contract behind the gem fails here, naming the fix, rather than as an
+      # "unknown attribute" or "no such column" from deep inside the write.
+      def require_columns!
+        missing = COLUMNS - entry_class.column_names
+        return if missing.empty?
 
-      # Creates the chain record with its genesis — link 0 — for the row about to be written
-      # as sequence 1. Returns nil if another writer won the race to create it.
-      def start_chain(connection, signer)
-        genesis = genesis_for(signer)
-        digest = Canonical.genesis_digest(signer.signing_secret, genesis)
-        values = genesis.merge(name: ChainRecord::LEDGER, genesis_digest: digest,
-                               head_sequence: 1, head_digest: digest)
-
-        entry_class.transaction(requires_new: true) do
-          connection.insert("INSERT INTO #{TABLE} (#{values.keys.join(', ')}) " \
-                            "VALUES (#{values.values.map { |v| connection.quote(v) }.join(', ')})")
-        end
-        [1, digest]
-      rescue ActiveRecord::RecordNotUnique
-        nil
-      end
-
-      def genesis_for(signer)
-        {
-          genesis_at: Time.now.utc.floor(6),
-          pre_chain_count: entry_class.where("contract_version < 3").count,
-          pre_chain_unchained_count:
-            entry_class.where("contract_version >= 3 AND chain_digest IS NULL").count,
-          genesis_key_id: signer.signing_id
-        }
+        raise ConfigurationError,
+              "#{entry_class.table_name} is missing #{missing.join(', ')}: the ledger is at an " \
+              "older audit-entry contract than this reeve writes (#{CONTRACT_VERSION}). Run " \
+              "`bin/rails generate reeve:upgrade` and `bin/rails db:migrate`."
       end
 
       def replayed(normalized)
@@ -170,10 +153,6 @@ module Reeve
       # through one Chain drove a single PostgreSQL connection at once.
       def with_connection(&block)
         entry_class.connection_pool.with_connection(&block)
-      end
-
-      def name_clause(connection)
-        "name = #{connection.quote(ChainRecord::LEDGER)}"
       end
     end
   end

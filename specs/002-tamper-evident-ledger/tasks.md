@@ -283,14 +283,14 @@ uncovered.
         the large-ledger index note
       PULLED FORWARD into Phase 2: once T012 puts the install template at contract 3,
       the existing convergence spec (fresh install == upgraded table) needs this step
-- [ ] T036 [P] [US3] Extend `spec/reeve/audit/failure_mode_spec.rb` with the no-key matrix
+- [x] T036 [P] [US3] Extend `spec/reeve/audit/failure_mode_spec.rb` with the no-key matrix
       from contracts/ledger-chain.md "Writing":
       - `:fail` → `AuditWriteError`, cause `LedgerKeyError`;
       - `:warn` → a contract-3 row with all three chain columns NULL, a warning logged on
         every such write, and no chain lock taken;
       - a table missing the contract-3 columns → `AuditWriteError`, cause
         `ConfigurationError` naming `rails g reeve:upgrade`, never `UnknownAttributeError`
-- [ ] T037 [P] [US3] Write `spec/reeve/audit/chain/upgrade_spec.rb`, end to end:
+- [x] T037 [P] [US3] Write `spec/reeve/audit/chain/upgrade_spec.rb`, end to end:
       - build a contract-2 table and write 50 rows;
       - run the generated upgrade migration and snapshot the old rows;
       - invoke a guarded tool, then assert: old rows byte-identical, chain record with
@@ -307,7 +307,7 @@ uncovered.
       require `reeve_audit_chains`. Extend `pending_message` with the initializer line, the
       rotation warning and the `algorithm: :concurrently` note
       PULLED FORWARD with T035, for the same reason
-- [ ] T039 [US3] In `lib/reeve/audit/recorder.rb`, implement:
+- [x] T039 [US3] In `lib/reeve/audit/recorder.rb`, implement:
       - the once-per-process column check, raising `ConfigurationError`;
       - the no-key behaviour: under `:fail` raise `LedgerKeyError` (the envelope wraps it);
         under `:warn` write unchained and log

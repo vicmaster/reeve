@@ -50,6 +50,12 @@ class MyRecorder
 end
 ```
 
+`Chain#append_unchained!(row) → Entry` writes the row at its contract version with no chain
+columns and takes no lock — for a recorder that has chosen to keep running without a key,
+as `Recorder` does under `:warn`. Verification reports such rows as unchained. Both methods
+raise `Reeve::ConfigurationError`, naming `reeve:upgrade`, on a table without the contract-3
+columns.
+
 `Chain#append!(row) → Entry` normalizes the JSON and time values (research R2), takes the
 chain lock on `entry_class`'s connection, assigns `chain_sequence`, `chain_key_id` and
 `chain_digest`, inserts the row and advances the head, all inside one savepoint. It raises
