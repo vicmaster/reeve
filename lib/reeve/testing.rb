@@ -18,7 +18,7 @@ module Reeve
   #
   #   require "reeve/testing"
   #   report = Reeve::Checks.run_all(principals: [alice, bob])
-  #   abort report.to_s unless report.passed?
+  #   abort report.to_s if report.failed? || report.nothing_checked?
   module Testing
     class << self
       # The two fixture principals the compliance suite runs every tool against. Set once,

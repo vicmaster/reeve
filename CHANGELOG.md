@@ -90,6 +90,25 @@ Behaviour changes worth reading before upgrading:
   warning and how to build the new index concurrently on a large PostgreSQL ledger. A step
   now counts as applied only when its columns and its tables both exist.
 
+### Fixed
+
+- **A per-tool compliance check with no tools to check is skipped, not passed.** With no
+  tool registered, `compliance_tools` set to `[]`, or `tools: []`, `Reeve::Checks.run`
+  returned an empty `Report` — which reads as passed — so the RSpec shared group and
+  `ComplianceAssertions` showed all six per-tool checks green over zero tools. Each now
+  returns one skipped result, "no compliance tools to check, so GuardDeclared established
+  nothing — the registry is empty and no endpoint inventory routes a tool" (or `the run was
+  given tools: []`, or `compliance_tools is []`), shown as pending in RSpec and as a skip
+  in Minitest. Over an empty registry `run_all` used to report only the ledger-wide checks
+  (two in 0.5.0); it now also reports the six per-tool skips. Nothing that ran over at
+  least one tool changes.
+- **The framework-free gate fails when a check had nothing to check.** The README's
+  `abort report.to_s unless report.passed?` stayed green over zero tools, because a skip is
+  not a failure. The documented gate is now
+  `abort report.to_s if report.failed? || report.nothing_checked?`, using the new
+  `Report#nothing_checked?`. A skip for a missing inventory does not trip it.
+
+
 ## [0.5.0] - 2026-10-01
 
 Reeve protects the tools routed through it, and only those. A server that registers its

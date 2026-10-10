@@ -163,6 +163,18 @@ RSpec.describe Reeve::Testing::Assertions, :reeve_fixtures do
       expect(expected).to include("config.ledger_key")
     end
 
+    it "skips every per-tool method, with its reason, when there is no tool to check" do
+      Reeve.reset_registry!
+      global = Reeve::Checks::GLOBAL.map { |check| "test_reeve_#{check.check_name.gsub(/([a-z])([A-Z])/, '\\1_\\2').downcase}" }
+      per_tool = reeve_test_methods(test_case) - global
+
+      expect(per_tool.size).to eq(6)
+      per_tool.each do |method|
+        expect { test_case.new(method).public_send(method) }
+          .to raise_error(Minitest::Skip, /no compliance tools to check/)
+      end
+    end
+
     it "fails the matching method, and names the tool, when a tool leaks" do
       ReeveFixtures::LeakyInvoiceTool.guard_with(ReeveFixtures::LeakyInvoicePolicy)
 

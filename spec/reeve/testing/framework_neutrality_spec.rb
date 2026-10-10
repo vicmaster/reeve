@@ -74,7 +74,26 @@ RSpec.describe "the testing kit's framework neutrality" do
 
     it "is present and self-contained" do
       expect(snippet).to include("Reeve::Checks.run_all")
-      expect(snippet).to include("abort report.to_s unless report.passed?")
+      expect(snippet).to include("abort report.to_s if report.failed? || report.nothing_checked?")
+    end
+
+    # A run over no tools passes, in the sense that nothing failed; with no test framework
+    # there is no pending to show it, so the gate must stop on it instead.
+    it "aborts, saying so, when there was no tool to check" do
+      Reeve.reset_registry!
+      aborted = nil
+      binding_for_snippet = binding
+      binding_for_snippet.local_variable_set(:alice, alice)
+      binding_for_snippet.local_variable_set(:bob, bob)
+
+      printed = capture_stderr do
+        binding_for_snippet.eval(snippet, "README.md")
+      rescue SystemExit
+        aborted = true
+      end
+
+      expect(aborted).to be(true)
+      expect(printed).to include("no compliance tools to check")
     end
 
     it "aborts with the report body when a registered tool leaks" do

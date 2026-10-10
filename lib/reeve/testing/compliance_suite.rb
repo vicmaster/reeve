@@ -12,8 +12,8 @@
 #
 # One example per check rather than one for the lot, so a red build names the guarantee
 # that broke — "CrossPrincipalLeak" is an incident, "compliance" is a shrug. A check that
-# could establish nothing either way (EndpointCoverage with no inventory) is skipped, with
-# its reason, rather than passed.
+# could establish nothing either way (EndpointCoverage with no inventory, or a per-tool
+# check with no tools to run over) is skipped, with its reason, rather than passed.
 RSpec.shared_examples "a reeve-compliant server" do
   Reeve::Checks::ALL.each do |check|
     it "satisfies #{check.check_name} for every registered guarded tool" do

@@ -63,6 +63,20 @@ broken or unverifiable chain, an unchained entry, a missing ledger key, or an en
 not write. Skipped — saying the chain was not verified — when there is no compliance tool
 to write with or no ledger loaded. It is the second check that can be skipped.
 
+**On per-tool checks with no tools (added 2026-10-10)**: the third way a check is skipped,
+after `EndpointCoverage` and `LedgerChain`. `Checks.run` over an empty population — no tool
+registered, `compliance_tools` set to `[]`, or `tools: []` — used to return an empty
+`Report`, which reads as passed, so all six per-tool checks went green having examined
+nothing. Each now returns one skipped result, "no compliance tools to check, so
+GuardDeclared established nothing — …", naming which of the three emptied the run.
+
+Its details say `coverage: :none` — there was nothing to examine — where the other two
+skips say `coverage: :unverified`, a population that existed but whose coverage could not
+be established. The difference is what lets a gate tell them apart: `Report#nothing_checked?`
+is true when any result has nothing to examine, and the framework-free gate in the README
+fails on it, since that path has no pending or skip to show. A skip for a missing inventory
+stays a skip there.
+
 **On `ContractVersion` (corrected 2026-08-11)**: this originally said "the *recorded*
 contract version matches the gem", which is not checkable — there is no `contract_version`
 column, and adding one would stamp the same value on every row of a deploy. What the check
@@ -87,8 +101,11 @@ suite** — a rake task, a CI script, a deploy gate, or a boot-time assertion in
 
 ```ruby
 report = Reeve::Checks.run_all(principals: [alice, bob])
-abort report.to_s unless report.passed?
+abort report.to_s if report.failed? || report.nothing_checked?
 ```
+
+`passed?` means nothing failed; `nothing_checked?` means some check had no tool to examine.
+A gate with no test framework needs both, because it has no pending to show the second.
 
 ## Layer 2 — RSpec front-end
 
