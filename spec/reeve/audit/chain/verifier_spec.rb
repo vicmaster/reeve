@@ -65,6 +65,26 @@ RSpec.describe Reeve::Audit::Chain::Verifier do
     expect { verifier.call }.to raise_error(Reeve::ConfigurationError, /ChainRecord/)
   end
 
+  # SC-004 on PostgreSQL: the resume condition `chain_sequence > s OR (chain_sequence = s AND
+  # id > i)` was applied as a filter, so every batch scanned from the first row and the walk
+  # was quadratic — 1M rows took 331 s against a 300 s budget. A batch must start its index
+  # scan where the last one stopped. Pinned through the database's own plan rather than a
+  # timing, which would flake.
+  it "starts each batch's index scan where the previous batch stopped" do
+    5.times { chain.append!(row) }
+    walk = Reeve::Audit::Chain::Walk.new(entry_class: Reeve::Audit::Entry, keyring: keyring,
+                                         batch_size: 2, link: nil, report: ->(*) {})
+    batch = walk.send(:batch_scope, [3, Reeve::Audit::Entry.where(chain_sequence: 3).pick(:id)], 5)
+    plan = case SpecDatabase.adapter
+           when "postgresql" then ActiveRecord::Base.connection.select_values("EXPLAIN #{batch.to_sql}").join("\n")
+           when "sqlite3" then ActiveRecord::Base.connection.select_rows("EXPLAIN QUERY PLAN #{batch.to_sql}").flatten.join(" ")
+           else skip("the plan is read on PostgreSQL and SQLite; MySQL is covered by the benchmark")
+           end
+
+    lower_bound = SpecDatabase.sqlite? ? /chain_sequence>\?/ : /Index Cond:.*chain_sequence >=/
+    expect(plan).to match(lower_bound), "the batch scans from the start of the index:\n#{plan}"
+  end
+
   it "uses a default batch of 1,000 rows" do
     expect(described_class::BATCH_SIZE).to eq(1_000)
   end

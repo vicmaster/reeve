@@ -100,13 +100,22 @@ module Reeve
         end
 
         def batch_after(after, limit)
+          entry_class.uncached { batch_scope(after, limit).to_a }
+        end
+
+        # Resumes after (sequence, id). The `>=` is what the index can use; the OR beneath it
+        # only breaks ties between rows sharing that sequence. Written as the OR alone, the
+        # condition is the same set of rows, but PostgreSQL applied it as a filter and scanned
+        # every batch from the first row: the walk was quadratic, and a million rows took 331 s
+        # against SC-004's 300. SQLite derived the bound on its own, which hid it there.
+        def batch_scope(after, limit)
           scope = entry_class.where.not(chain_sequence: nil)
           scope = scope.where("chain_sequence <= ?", limit) if limit
           if after
-            scope = scope.where("chain_sequence > ? OR (chain_sequence = ? AND id > ?)",
-                                after[0], after[0], after[1])
+            scope = scope.where("chain_sequence >= ?", after[0])
+                         .where("chain_sequence > ? OR id > ?", after[0], after[1])
           end
-          entry_class.uncached { scope.order(:chain_sequence, :id).limit(batch_size).to_a }
+          scope.order(:chain_sequence, :id).limit(batch_size)
         end
       end
     end

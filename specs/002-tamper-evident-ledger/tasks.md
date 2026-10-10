@@ -405,13 +405,14 @@ against each US2 ledger.
 - [x] T053 Write `specs/002-tamper-evident-ledger/verification.md`, mapping SC-001–SC-007 to
       their specs with a "Known gaps" section, and extend `spec/reeve/verification_spec.rb`
       to check this map as it checks 001's
-- [ ] T054 Rerun the T002 benchmark with chaining. Add a `:benchmark` fixture builder to
+- [x] T054 Rerun the T002 benchmark with chaining. Add a `:benchmark` fixture builder to
       `spec/reeve/audit/chain/benchmark_spec.rb` that writes a 100k and a 1M-entry chained
       ledger through `Chain#append!` in batched transactions. Then measure SC-004 (verify
       1M rows; peak memory at 100k vs 1M) and SC-005 on each engine. Record the results in
       verification.md; if a target is missed, say so there and in the spec
-      DONE, and SC-004's time is MISSED on PostgreSQL (331 s vs 300 s); memory flat on both.
-      Recorded in verification.md and spec.md. Fixing the walk's keyset query is the next change
+      DONE. SC-004 was first MISSED on PostgreSQL (331 s vs 300 s): the walk's keyset `OR`
+      ran as a filter, so every batch scanned from the first row. Fixed with a `>=` lower
+      bound; re-measured 159 s, linear; pinned by a query-plan spec. Memory flat on both
 - [ ] T055 Run the full suite on SQLite locally and confirm the PostgreSQL, MySQL, Ruby 3.0
       floor and RuboCop jobs pass in CI
 - [x] T056 Run `/code-review` on the branch. Give `canonical.rb`, `chain.rb` and
