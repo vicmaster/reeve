@@ -23,18 +23,39 @@ module Reeve
           @entry_class = entry_class
         end
 
-        # Locks the head and returns the next sequence and the digest it links to,
-        # starting the chain if there is none.
-        def advance!(signer)
-          if increment.zero?
-            started = start(signer)
-            return started if started
+        # Creates the chain record with its genesis — link 0, head 0 — unless it exists.
+        #
+        # Deliberately not part of the write that follows. Run first inside it, an UPDATE that
+        # matched no row took a gap lock on MySQL's unique index, and two writers starting the
+        # chain at once each tried to INSERT into the gap the other held: a deadlock, found
+        # by CI, invisible on PostgreSQL, which has no gap locks. On its own, two concurrent
+        # INSERTs of one unique name serialize: one wins and the other gets a duplicate key,
+        # which means the chain has started and is all it needs to know.
+        #
+        # So a started chain can exist with nothing in it yet (head 0) — if the first chained
+        # write then fails, say. The verifier reports that as no chain, not as a pass.
+        def start!(signer)
+          return if connection.select_value("SELECT 1 FROM #{TABLE} WHERE #{named}")
 
-            # Another writer created the record between our UPDATE and our INSERT. Its row
-            # is committed or about to be; this UPDATE waits for it and then succeeds.
-            vanished = increment.zero?
-            raise ActiveRecord::StatementInvalid, "the ledger chain record vanished" if vanished
+          genesis = genesis_for(signer)
+          digest = Canonical.genesis_digest(signer.signing_secret, genesis)
+          values = genesis.merge(name: ChainRecord::LEDGER, genesis_digest: digest,
+                                 head_sequence: 0, head_digest: digest)
+          quoted = values.values.map { |value| connection.quote(value) }
+
+          entry_class.transaction(requires_new: true) do
+            connection.insert("INSERT INTO #{TABLE} (#{values.keys.join(', ')}) " \
+                              "VALUES (#{quoted.join(', ')})")
           end
+        rescue ActiveRecord::RecordNotUnique
+          nil
+        end
+
+        # Locks the head and returns the next sequence and the digest it links to. The chain
+        # must have been started.
+        def advance!
+          vanished = increment.zero?
+          raise ActiveRecord::StatementInvalid, "the ledger chain record vanished" if vanished
 
           head = connection.select_one("SELECT head_sequence, head_digest FROM #{TABLE} " \
                                        "WHERE #{named}")
@@ -52,24 +73,6 @@ module Reeve
 
         def increment
           connection.update("UPDATE #{TABLE} SET head_sequence = head_sequence + 1 WHERE #{named}")
-        end
-
-        # Creates the chain record with its genesis — link 0 — for the row about to be
-        # written as sequence 1. Returns nil if another writer won the race to create it.
-        def start(signer)
-          genesis = genesis_for(signer)
-          digest = Canonical.genesis_digest(signer.signing_secret, genesis)
-          values = genesis.merge(name: ChainRecord::LEDGER, genesis_digest: digest,
-                                 head_sequence: 1, head_digest: digest)
-
-          entry_class.transaction(requires_new: true) do
-            quoted = values.values.map { |value| connection.quote(value) }
-            connection.insert("INSERT INTO #{TABLE} (#{values.keys.join(', ')}) " \
-                              "VALUES (#{quoted.join(', ')})")
-          end
-          [1, digest]
-        rescue ActiveRecord::RecordNotUnique
-          nil
         end
 
         def genesis_for(signer)

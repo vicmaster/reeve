@@ -131,6 +131,32 @@ RSpec.describe Reeve::Audit::Chain::Verifier do
       expect(result).not_to be_intact
     end
 
+    # The genesis is written just before the first chained write, in a step of its own; if
+    # that write then fails, a started chain with nothing in it remains. Nothing was
+    # verified, so it is no chain — not an intact chain of zero rows.
+    it "is no_chain for a chain that was started but holds nothing yet" do
+      Reeve::Audit::Chain::Head.new(connection: ActiveRecord::Base.connection, entry_class: Reeve::Audit::Entry)
+                               .start!(keyring)
+
+      result = call
+
+      expect(Reeve::Audit::ChainRecord.ledger.head_sequence).to eq(0)
+      expect(result.status).to eq(:no_chain)
+    end
+
+    it "reports a row forged into a started, empty chain as past the head" do
+      Reeve::Audit::Chain::Head.new(connection: ActiveRecord::Base.connection, entry_class: Reeve::Audit::Entry)
+                               .start!(keyring)
+      Reeve::Audit::Entry.insert_all!([
+                                        Reeve::Audit::Chain::Normalizer.new(Reeve::Audit::Entry).call(
+                                          row(chain_sequence: 1, chain_key_id: Reeve.config.ledger_key_id, chain_digest: "f" * 64)
+                                        )
+                                      ])
+
+      # Exactly that: a head at 0 links to the genesis, so it is not also a head mismatch.
+      expect(call.breaks.map { |b| [b.kind, b.sequence] }).to eq([[:beyond_head, 1]])
+    end
+
     it "is no_chain when nothing was ever chained, and counts what is there" do
       2.times { unchained!(contract_version: 2) }
 

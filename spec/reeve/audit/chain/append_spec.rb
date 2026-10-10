@@ -189,7 +189,13 @@ RSpec.describe "Reeve::Audit::Chain#append!" do
         end
       end
       2.times { gate << :go }
-      threads.each(&:join)
+      failures = threads.filter_map do |thread|
+        thread.join
+        nil
+      rescue StandardError => e
+        e
+      end
+      raise failures.first unless failures.empty?
 
       expect(Reeve::Audit::ChainRecord.count).to eq(1)
       expect(entries.map(&:chain_sequence)).to eq([1, 2])

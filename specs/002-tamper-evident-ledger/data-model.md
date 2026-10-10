@@ -68,11 +68,14 @@ the head.
 ### Life cycle
 
 ```text
-(no record) ──first chained write──▶ created: genesis written, head = (1, digest of row 1)
-created ──each chained write──▶ head = (n+1, digest of row n+1)
+(no record) ──before the first chained write──▶ started: genesis written, head = (0, genesis digest)
+started/created ──each chained write──▶ head = (n+1, digest of row n+1)
 ```
 
-A rolled-back write rolls back the head move with it. There is no other transition.
+The genesis is written in a step of its own, just before the first chained write (research
+R3, "The genesis race on MySQL"), so a started chain with nothing in it can exist; the
+verifier reports it as `no_chain`. A rolled-back write rolls back the head move with it.
+There is no other transition.
 
 ## Configuration additions
 

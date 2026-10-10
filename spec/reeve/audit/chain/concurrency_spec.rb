@@ -37,8 +37,21 @@ RSpec.describe "concurrent writers on one chain" do
       end
     end
     writers.times { gate << :go }
-    threads.each(&:join)
+    join_all(threads)
     Array.new(errors.size) { errors.pop }
+  end
+
+  # Every thread finishes before anything is raised. `threads.each(&:join)` re-raises the
+  # first failure at once and leaves the others writing into whatever example runs next —
+  # which is how one MySQL deadlock once surfaced as three unrelated failures.
+  def join_all(threads)
+    failures = threads.filter_map do |thread|
+      thread.join
+      nil
+    rescue Exception => e # rubocop:disable Lint/RescueException -- re-raised below, after every join
+      e
+    end
+    raise failures.first unless failures.empty?
   end
 
   def sequences

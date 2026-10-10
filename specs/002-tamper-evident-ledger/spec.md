@@ -216,8 +216,8 @@ reports the old rows as uncovered and the chain as intact.
 1. **Given** a contract-2 ledger, **When** `reeve:upgrade` runs, **Then** it emits only the
    contract-3 step, and running it again afterwards reports nothing to do.
 2. **Given** an upgraded ledger with no chain yet, **When** the first chained entry is
-   written, **Then** the chain record is created with its genesis, in the same
-   all-or-nothing write as that entry, recording when the chain started and how many entries
+   written, **Then** the chain record is created with its genesis just before that entry,
+   in a step of its own (see FR-022), recording when the chain started and how many entries
    preceded it.
 3. **Given** a gem upgraded to contract 3 on a table still at contract 2, **When** a guarded
    tool is invoked, **Then** the failure names the missing upgrade and the command that
@@ -292,6 +292,8 @@ the US2 ledgers and confirm exit statuses.
   are not reported as tampered and not reported as intact.
 - **Genesis written twice** (two processes racing to start the chain). Exactly one chain
   record may exist; the loser of the race chains after the winner's entry.
+- **A chain started, then its first write failed.** The chain record exists with its head at
+  0 and nothing in it. Reported as no chain; the next chained write becomes sequence 1.
 - **Entries added to or removed from the pre-chain region.** Not detected. Verification
   reports the number of uncovered entries now beside the number recorded when the chain
   started; a difference is shown, never judged, because servers on an older reeve version
@@ -412,12 +414,14 @@ the US2 ledgers and confirm exit statuses.
   dedicated key, and MUST NOT generate or embed a key value. The upgrade output MUST show
   the line to add to an existing initializer. The documentation MUST state that rotating
   `secret_key_base` rotates the ledger key.
-- **FR-022**: The chain MUST begin with a genesis, created atomically with the first
-  chained entry, that records when the chain started, the number of entries already in the
+- **FR-022**: The chain MUST begin with a genesis, created just before the first chained
+  entry in a step of its own (amended during US4: created inside that entry's write, it
+  deadlocked on MySQL, research R3), that records when the chain started, the number of entries already in the
   ledger, the number of those that are contract-3 entries written without a key, and the key
   that signed it, under its own keyed digest. The genesis is link 0: it
   is held in the chain record rather than as a ledger row, so ledger queries and the
-  existing compliance checks never see it as an invocation.
+  existing compliance checks never see it as an invocation. A chain started with no entry
+  yet (head 0) MUST be reported as `no_chain`, never as an intact chain of nothing.
 - **FR-023**: Every guarantee in this section MUST be covered by a test that fails with the
   behaviour reverted, run on SQLite, PostgreSQL and MySQL in CI — including concurrent
   writers on PostgreSQL and MySQL.

@@ -32,10 +32,11 @@ module Reeve
         end
 
         def call
-          return no_key if keyring.empty?
+          return unwalked(:unverifiable, :no_key) if keyring.empty?
 
           record = read_head
-          return no_chain if record.nil? && !chained_rows?
+          started = record&.head_sequence&.positive?
+          return unwalked(:no_chain) if !started && !chained_rows?
 
           @breaks = []
           walk = walk(record)
@@ -67,7 +68,8 @@ module Reeve
 
           check_genesis(record)
           head = record.head_sequence
-          return if walk.last_sequence == head && walk.last_digest == record.head_digest
+          last_digest = walk.last_sequence.zero? ? record.genesis_digest : walk.last_digest
+          return if walk.last_sequence == head && last_digest == record.head_digest
 
           add(:head_mismatch, head,
               "the head is at #{head}, the last chained row found is #{walk.last_sequence}")
@@ -127,13 +129,9 @@ module Reeve
           last.positive? ? 1..last : nil
         end
 
-        def no_key
-          Verification.new(status: :unverifiable, reason: :no_key,
-                           uncovered_now: count_uncovered, unchained_now: count_unchained)
-        end
-
-        def no_chain
-          Verification.new(status: :no_chain,
+        # An answer given before any walk: no key to walk with, or no chain to walk.
+        def unwalked(status, reason = nil)
+          Verification.new(status: status, reason: reason,
                            uncovered_now: count_uncovered, unchained_now: count_unchained)
         end
 

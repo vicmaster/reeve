@@ -148,6 +148,29 @@ pinned on that stack (concurrency_spec, Rails < 7.1) is that a contended write *
 closed** and the writes that land still form one gap-free, intact chain. The README states
 the limit (T051).
 
+### The genesis race on MySQL (found by CI, 2026-10-10)
+
+The first design started the chain inside the first write's transaction: `UPDATE` the head,
+and if it matched no row, `INSERT` the genesis. On InnoDB an `UPDATE` that matches no row on
+a unique index takes a *gap* lock. Two writers starting the chain at once each held the gap
+and each tried to `INSERT` into the gap the other held, so MySQL killed one as a deadlock.
+PostgreSQL has no gap locks, which is why it passed there. CI's MySQL job caught it on the
+second run of the chain code; the first run happened to miss the race.
+
+**Decision**: the genesis is written first, in a step of its own (`Head#start!`: look for
+the record, `INSERT` it if absent, treat a duplicate key as "another writer started it"),
+and only then does the locked write begin. Its `UPDATE` always finds a row and takes a row
+lock. Two concurrent `INSERT`s of one unique key serialize without a deadlock.
+
+**Cost**: the genesis is no longer atomic with the first entry. A started chain with head 0
+and nothing in it can exist, and remains if that first write fails. The verifier reports it
+as `no_chain` (FR-022 amended). Inside a transaction the host opened, the step is a savepoint
+of that transaction and is rolled back with it, as before.
+
+The same CI run showed a harness defect: `threads.each(&:join)` re-raises the first thread's
+failure while the others keep writing into the next examples, turning one deadlock into
+three failures. The concurrency specs now join every thread before raising.
+
 ## R4. Genesis lives in the chain record (spec amended)
 
 **Decision**: the genesis is link 0, stored on the chain record: `genesis_at`,

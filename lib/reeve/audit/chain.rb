@@ -67,7 +67,9 @@ module Reeve
         normalized = normalizer.call(row)
         with_connection do |connection|
           insert_once(normalized) do
-            entry_class.transaction(requires_new: true) { link!(connection, normalized, signer) }
+            head = Head.new(connection: connection, entry_class: entry_class)
+            head.start!(signer)
+            entry_class.transaction(requires_new: true) { link!(head, normalized, signer) }
           end
         end
       end
@@ -101,9 +103,8 @@ module Reeve
       # column defaults (`truncated: false`) and casts on assignment (an Integer principal_id
       # becomes a String), and the instance is exactly what the database will be given.
       # Digesting the hash a caller passed would sign values that are never stored.
-      def link!(connection, normalized, signer)
-        head = Head.new(connection: connection, entry_class: entry_class)
-        sequence, previous = head.advance!(signer)
+      def link!(head, normalized, signer)
+        sequence, previous = head.advance!
         entry = entry_class.new(normalized.merge(chain_sequence: sequence,
                                                  chain_key_id: signer.signing_id))
         entry.chain_digest = Canonical.entry_digest(signer.signing_secret, entry,
