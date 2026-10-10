@@ -43,7 +43,9 @@ module Reeve
 
         # A new hash; the row passed in is not modified.
         def call(row)
-          normalized = row.dup
+          # Symbol keys throughout, whatever the caller built: a host recorder (FR-007) may use
+          # strings, and every lookup below — and the replay check after it — is by symbol.
+          normalized = row.to_h.transform_keys(&:to_sym)
           JSON_FIELDS.each do |field|
             next unless normalized.key?(field)
 

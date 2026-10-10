@@ -57,7 +57,12 @@ module Reeve
         # tool's own error, still leaves a ledger entry — the envelope records before it
         # re-raises — which is all this needs. A failed ledger write leaves none, and is
         # returned as the reason the chain could not be checked.
+        #
+        # Returns nil when entries were written, or the reason none were — including the case
+        # where every invocation failed before reaching reeve, which a chain left by an
+        # earlier run must not be allowed to pass for.
         def write_entries
+          before = ledger.count
           principals.each do |principal|
             invoke.call(tool: subject, arguments: arguments, principal: principal)
           rescue Reeve::AuditWriteError => e
@@ -65,7 +70,7 @@ module Reeve
           rescue StandardError
             next
           end
-          nil
+          ledger.count == before ? "its invocations wrote no entry" : nil
         end
 
         def readable?
@@ -73,7 +78,7 @@ module Reeve
         end
 
         def unwritten_entry(reason)
-          failed("#{NOT_VERIFIED}: its own entry could not be written — #{reason}",
+          failed("#{NOT_VERIFIED}: it wrote no entry of its own — #{reason}",
                  coverage: :unwritten)
         end
 

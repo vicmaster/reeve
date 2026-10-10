@@ -228,7 +228,7 @@ the walk. A row above the second read cannot be: an entry and its head move comm
 so reeve never leaves a committed row past a committed head. Without this second read, a row
 forged past the head would never be examined, by this run or any later one. Such a row also
 takes the sequence number the next legitimate write needs, so that write fails on the unique
-index. Both signals are reported, not hidden. Count contract-3 rows with no digest (`unchained`) and contract
+index. Both signals are reported, not hidden. Count contract-3 rows with no sequence (`unchained`) and contract
 1–2 rows (`uncovered`) with two `COUNT(*)` queries.
 
 **Rationale**: memory stays flat whatever the ledger size (FR-015, SC-004). Short batched

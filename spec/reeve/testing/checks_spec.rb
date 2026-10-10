@@ -331,6 +331,18 @@ RSpec.describe Reeve::Checks, :reeve_fixtures do
       expect(result.message).to include("ledger down")
     end
 
+    # Review finding: an invoker that fails before reaching reeve writes nothing, and a
+    # chain left by an earlier run must not let the check pass on its behalf.
+    it "fails when its invocations wrote nothing, even over an intact chain left earlier" do
+      chained!(2)
+      failing_invoke = ->(**) { raise NoMethodError, "the host invoker broke first" }
+
+      result = described_class.new(tools: [control], principals: [alice], invoke: failing_invoke).call
+
+      expect(result).to be_failed
+      expect(result.message).to include("wrote no entry")
+    end
+
     it "is skipped, saying the chain was not verified, when there are no compliance tools" do
       result = described_class.new(tools: [], principals: [alice]).call
 

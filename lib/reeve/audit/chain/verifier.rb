@@ -23,7 +23,7 @@ module Reeve
         BATCH_SIZE = 1_000
 
         RECORD_MISSING = "chained rows exist but the chain record does not"
-        UNCHAINED = "a contract-3 row with no digest, written after the chain started (by clock)"
+        UNCHAINED_ROW = "a contract-3 row outside the chain, written after it started (by clock)"
 
         def initialize(entry_class:, keyring:, batch_size: BATCH_SIZE)
           @entry_class = entry_class
@@ -34,10 +34,19 @@ module Reeve
         def call
           return unwalked(:unverifiable, :no_key) if keyring.empty?
 
-          record = read_head
-          started = record&.head_sequence&.positive?
-          return unwalked(:no_chain) if !started && !chained_rows?
+          ChainRecord.require_same_database!(entry_class)
 
+          record = read_head
+          return unwalked(:no_chain) unless record&.head_sequence&.positive? || chained_rows?
+
+          verify_chain(record)
+        end
+
+        private
+
+        attr_reader :entry_class, :keyring, :batch_size, :breaks
+
+        def verify_chain(record)
           @breaks = []
           walk = walk(record)
           check_record(record, walk)
@@ -47,10 +56,6 @@ module Reeve
 
           result(record, head_at_end, walk.last_sequence)
         end
-
-        private
-
-        attr_reader :entry_class, :keyring, :batch_size, :breaks
 
         def walk(record)
           Walk.new(entry_class: entry_class, keyring: keyring, batch_size: batch_size,
@@ -89,11 +94,18 @@ module Reeve
         def check_beyond_head(record)
           return if record.nil?
 
-          head = record.head_sequence
+          candidates = entry_class.where("chain_sequence > ?", record.head_sequence)
+                                  .order(:chain_sequence).pluck(:chain_sequence)
+          return if candidates.empty?
+
+          # Read the head once more, after the search. A row committed between the last read
+          # and the search moved the head with it, so the head now covers it; a row above
+          # this read cannot have been written by reeve.
+          head = read_head&.head_sequence || record.head_sequence
           detail = "numbered past the head (#{Report.number(head)} at the end of the walk); " \
                    "reeve did not write it"
-          beyond = entry_class.where("chain_sequence > ?", head).order(:chain_sequence)
-          beyond.pluck(:chain_sequence).each { |sequence| add(:beyond_head, sequence, detail) }
+          candidates.select { |sequence| sequence > head }
+                    .each { |sequence| add(:beyond_head, sequence, detail) }
         end
 
         # Contract-3 rows with no digest, beyond the number that already existed when the
@@ -102,10 +114,10 @@ module Reeve
         def check_unchained(record)
           return if count_unchained <= (record ? record.pre_chain_unchained_count : 0)
 
-          scope = unchained_scope
+          scope = entry_class.where(UNCHAINED)
           scope = scope.where("occurred_at > ?", record.genesis_at) if record
           scope.order(:occurred_at).pluck(:invocation_id).each do |invocation_id|
-            add(:unchained, nil, UNCHAINED, invocation_id)
+            add(:unchained, nil, UNCHAINED_ROW, invocation_id)
           end
         end
 
@@ -139,17 +151,9 @@ module Reeve
           entry_class.where.not(chain_sequence: nil).exists?
         end
 
-        def count_uncovered
-          @count_uncovered ||= entry_class.where("contract_version < 3").count
-        end
+        def count_uncovered = (@count_uncovered ||= entry_class.where("contract_version < 3").count)
 
-        def count_unchained
-          @count_unchained ||= unchained_scope.count
-        end
-
-        def unchained_scope
-          entry_class.where("contract_version >= 3 AND chain_digest IS NULL")
-        end
+        def count_unchained = (@count_unchained ||= entry_class.where(UNCHAINED).count)
       end
     end
   end

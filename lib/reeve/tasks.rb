@@ -44,14 +44,17 @@ module Reeve
 
     # The Rake task, defined on the current Rake application. Depends on :environment, so
     # the host's initializer — and with it the ledger key — is loaded first.
+    #
+    # The DSL is borrowed by a throwaway object, so Reeve::Tasks itself never gains `task`,
+    # `sh` and the rest of Rake's methods.
     def define
-      extend Rake::DSL
-
-      namespace :reeve do
-        desc "Verify the audit ledger's chain " \
-             "(exit 0 intact, 1 broken, 2 could not verify; LIMIT=, FORMAT=json)"
-        task verify_ledger: :environment do
-          exit Reeve::Tasks.verify_ledger
+      Object.new.extend(Rake::DSL).instance_exec do
+        namespace :reeve do
+          desc "Verify the audit ledger's chain " \
+               "(exit 0 intact, 1 broken, 2 could not verify; LIMIT=, FORMAT=json)"
+          task verify_ledger: :environment do
+            exit Reeve::Tasks.verify_ledger
+          end
         end
       end
     end

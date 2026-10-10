@@ -41,6 +41,7 @@ Checks shipped in v1:
 | `Checks::PrincipalRequired` | no resolvable principal denies without consulting the policy | FR-001 |
 | `Checks::ContractVersion` | the ledger the host migrated implements the shape this gem version writes | FR-015 |
 | `Checks::EndpointCoverage` | every tool the server registers is routed through reeve and guarded, or exempted with a reason — and the run covered all of them | issue #20 |
+| `Checks::LedgerChain` | the audit ledger's chain verifies intact, after the run writes entries of its own | specs/002 FR-018 |
 
 **On `EndpointCoverage` (added 2026-10-01)**: every other check walks a population reeve
 assembled itself, so a tool the host dispatches without ever handing it to reeve is absent
@@ -55,12 +56,26 @@ run is a subset by its own account. A skipped result is counted and printed in a
 whole endpoint and a registered tool bypasses reeve, reaches it unguarded, or the inventory
 names a tool the server does not register.
 
-**On per-tool checks with no tools (added 2026-10-10)**: `EndpointCoverage` is no longer
-the only check that can be skipped. `Checks.run` over an empty population — no tool
+**On `LedgerChain` (specs/002)**: it writes an entry of its own per fixture principal,
+through the first compliance tool, then verifies the whole ledger the run can see. Passed
+only on an intact chain, with the verification's summary line as its message. Failed on a
+broken or unverifiable chain, an unchained entry, a missing ledger key, or an entry it could
+not write. Skipped — saying the chain was not verified — when there is no compliance tool
+to write with or no ledger loaded. It is the second check that can be skipped.
+
+**On per-tool checks with no tools (added 2026-10-10)**: the third way a check is skipped,
+after `EndpointCoverage` and `LedgerChain`. `Checks.run` over an empty population — no tool
 registered, `compliance_tools` set to `[]`, or `tools: []` — used to return an empty
 `Report`, which reads as passed, so all six per-tool checks went green having examined
 nothing. Each now returns one skipped result, "no compliance tools to check, so
 GuardDeclared established nothing — …", naming which of the three emptied the run.
+
+Its details say `coverage: :none` — there was nothing to examine — where the other two
+skips say `coverage: :unverified`, a population that existed but whose coverage could not
+be established. The difference is what lets a gate tell them apart: `Report#nothing_checked?`
+is true when any result has nothing to examine, and the framework-free gate in the README
+fails on it, since that path has no pending or skip to show. A skip for a missing inventory
+stays a skip there.
 
 **On `ContractVersion` (corrected 2026-08-11)**: this originally said "the *recorded*
 contract version matches the gem", which is not checkable — there is no `contract_version`
@@ -86,8 +101,11 @@ suite** — a rake task, a CI script, a deploy gate, or a boot-time assertion in
 
 ```ruby
 report = Reeve::Checks.run_all(principals: [alice, bob])
-abort report.to_s unless report.passed?
+abort report.to_s if report.failed? || report.nothing_checked?
 ```
+
+`passed?` means nothing failed; `nothing_checked?` means some check had no tool to examine.
+A gate with no test framework needs both, because it has no pending to show the second.
 
 ## Layer 2 — RSpec front-end
 

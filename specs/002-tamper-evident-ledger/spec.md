@@ -366,7 +366,7 @@ the US2 ledgers and confirm exit statuses.
   entry does not verify at its position: its content, its sequence number, or its
   predecessor changed — editing, reordering, swapping and insertion all surface here, and
   the report says that it cannot tell which), *missing* (a gap in sequence numbers),
-  *duplicate* sequence, *unchained* (a contract-3 entry with no digest, beyond the number that already existed
+  *duplicate* sequence, *unchained* (a contract-3 entry outside the chain — no sequence number — beyond the number that already existed
   when the chain started — see FR-022), *head mismatch*
   (the chain record disagrees with the last entry found), *genesis altered*, *chain record
   missing* (chained entries exist but the chain record does not), *beyond head* (a chained
@@ -455,7 +455,8 @@ the US2 ledgers and confirm exit statuses.
 - **SC-003**: 8 concurrent writers recording 1,000 invocations each produce 8,000 chained
   entries with sequence numbers 1–8,000, no gaps, no duplicates, no
   deadlocks, verified `intact` — on PostgreSQL and MySQL.
-- **SC-004**: Verification of a 1,000,000-entry ledger completes in under 5 minutes on a
+- **SC-004** *(measured 2026-10-10: memory met on both engines; time met on SQLite, 184 s,
+  and missed on PostgreSQL, 331 s — see verification.md)*: Verification of a 1,000,000-entry ledger completes in under 5 minutes on a
   developer laptop with peak memory that does not grow by more than 10% between a 100,000-
   and a 1,000,000-entry ledger.
 - **SC-005**: Chaining adds no more than 5 ms to the median ledger write for a single

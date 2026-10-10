@@ -55,6 +55,16 @@ RSpec.describe Reeve::Audit::Chain::Verifier do
     expect(walk).to all(match(/LIMIT\s+(2|\?|\$\d+)/i))
   end
 
+  # Review finding: the chain record is written through the ledger's connection but read
+  # through its own model's. On different databases the verifier would read the wrong one
+  # and report tampering; it refuses instead, naming the fix.
+  it "refuses to verify when the chain record is on a different database than the ledger" do
+    other = ActiveRecord::DatabaseConfigurations::HashConfig.new("test", "audit", { adapter: "sqlite3", database: "elsewhere" })
+    allow(Reeve::Audit::ChainRecord).to receive(:connection_db_config).and_return(other)
+
+    expect { verifier.call }.to raise_error(Reeve::ConfigurationError, /ChainRecord/)
+  end
+
   it "uses a default batch of 1,000 rows" do
     expect(described_class::BATCH_SIZE).to eq(1_000)
   end
@@ -86,6 +96,24 @@ RSpec.describe Reeve::Audit::Chain::Verifier do
       expect(result.head_at_start).to eq(3)
       expect(result.head_at_end).to eq(4)
       expect(result.covered).to eq(1..3)
+      expect(result.status).to eq(:intact)
+    end
+
+    # Review finding: a write that commits between the head's second read and the search for
+    # rows past it is legitimate, and must not be reported as forged.
+    it "does not report a row written between the second head read and the beyond-head search" do
+      3.times { chain.append!(row) }
+      walker = verifier
+      reads = 0
+      allow(walker).to receive(:read_head).and_wrap_original do |original|
+        head = original.call
+        chain.append!(row) if (reads += 1) == 2
+        head
+      end
+
+      result = walker.call
+
+      expect(result.breaks).to be_empty
       expect(result.status).to eq(:intact)
     end
 

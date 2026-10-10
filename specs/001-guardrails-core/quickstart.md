@@ -15,7 +15,8 @@ The generator creates two files:
 
 - `config/initializers/reeve.rb` — with `principal_resolver` left as a TODO you
   must fill in, and `unguarded_tools` written explicitly with both options shown (FR-023).
-- `db/migrate/xxxx_create_reeve_audit_entries.rb` — the ledger table.
+- `db/migrate/xxxx_create_reeve_audit_entries.rb` — the ledger table, and the record that
+  holds its chain (specs/002).
 
 ## 2. Say who the agent acts for
 
@@ -25,6 +26,8 @@ Reeve.configure do |config|
   config.principal_resolver = ->(context) { User.find_by(id: context.metadata[:user_id]) }
   config.unguarded_tools    = :deny        # :deny (default) | :allow_with_warning
   config.redact_arguments   = %i[password token ssn]
+  # Already in the generated initializer: the key that chains the ledger (specs/002).
+  config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)
 end
 ```
 
@@ -93,6 +96,16 @@ Reeve::Audit::Query
 
 One query, allowed and denied calls both present, each row naming the rule that decided
 it (SC-003).
+
+## 6. Check that nobody rewrote the ledger
+
+```bash
+bin/rails reeve:verify_ledger
+```
+
+Exit status `0` means the chain verified intact over the range it prints, `1` that it is
+broken, `2` that it could not verify. The limits of that guarantee are in the README's
+"Tamper-evident, within stated limits" and specs/002-tamper-evident-ledger/spec.md.
 
 ## Without Rails, or without fast-mcp
 

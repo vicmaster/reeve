@@ -44,9 +44,14 @@ module Reeve
   #   documents the `GRANT INSERT, SELECT` that enforces the rest where it can actually be
   #   enforced, and the gem makes no stronger claim than that.
   # * No retention, rotation or archival yet — the table is host-owned and the host's
-  #   existing policies apply.
-  # * No cryptographic chaining or tamper-evidence yet. If that lands it arrives as a
-  #   nullable column, which the audit-entry contract's versioning already permits.
+  #   existing policies apply. Deleting rows breaks the chain, by design.
+  # * Tamper-evidence, not tamper-proofing. Every row is chained to the one before it
+  #   (Reeve::Audit::Chain, contract 3), so a change made outside the library is reported
+  #   by verification — after the fact; it prevents nothing. It does not detect a change
+  #   made by someone holding the ledger key, the newest rows deleted by a role that can
+  #   also rewind the chain record's head, the whole ledger deleted, or anything about
+  #   rows written before contract 3. specs/001-guardrails-core/contracts/audit-entry.md,
+  #   guarantee 9, is the authoritative statement.
   #
   # ("yet" rather than "in v1": the gem version and the audit-entry contract version are
   # different numbers that move independently, and writing v1 for one of them read as the

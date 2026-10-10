@@ -31,6 +31,9 @@ RSpec.configure do |config|
   # only add minutes and noise. Run them on purpose: `bundle exec rspec --tag benchmark`.
   # An explicit `--tag benchmark` overrides this low-priority exclusion.
   config.filter_run_excluding :benchmark
+  # Minutes per engine (a million-row ledger built and verified): only on purpose, with
+  # `--tag benchmark_large`; CI's benchmark step runs `--tag benchmark` and skips these.
+  config.filter_run_excluding :benchmark_large
 
   # Configuration is process-wide; no example may leak into the next.
   config.before do
