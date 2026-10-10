@@ -107,10 +107,21 @@ end
 RSpec.describe "the shared group with no inventory declared", :reeve_fixtures do
   it "marks endpoint coverage pending, with its reason, and passes the rest" do
     Reeve::Testing.compliance_principals = -> { ReeveFixtures.principals }
-    ReeveFixtures::CompliantInvoiceTool.redact(:customer_ssn)
-    ReeveFixtures::CompliantInvoiceTool.guard_with(ReeveFixtures::GoodInvoicePolicy)
+    Reeve::Testing.compliance_tools = [ReeveFixtures::CompliantInvoiceTool]
 
-    group = RSpec.describe("inner") { it_behaves_like "a reeve-compliant server" }
+    # Set up inside the inner group: spec_helper resets the registry and the configuration
+    # before every example, the inner ones included, so a guard or a recorder configured
+    # out here would be gone by the time they ran. Before this was moved, every per-tool
+    # check in this example passed over no tools at all.
+    group = RSpec.describe("inner") do
+      before do
+        Reeve.config.audit_recorder = Reeve::Audit::Recorder
+        ReeveFixtures::CompliantInvoiceTool.redact(:customer_ssn)
+        ReeveFixtures::CompliantInvoiceTool.guard_with(ReeveFixtures::GoodInvoicePolicy)
+      end
+
+      it_behaves_like "a reeve-compliant server"
+    end
     group.run(RSpec::Core::NullReporter)
     statuses = group.descendants.flat_map(&:examples).to_h do |example|
       [example.description[/satisfies (\w+)/, 1], example.execution_result]
@@ -120,6 +131,35 @@ RSpec.describe "the shared group with no inventory declared", :reeve_fixtures do
     expect(statuses.fetch("EndpointCoverage").pending_message)
       .to include("no endpoint inventory is declared")
     expect(statuses.except("EndpointCoverage").values.map(&:status)).to all(eq(:passed))
+  ensure
+    RSpec.world.example_groups.delete(group) if group
+    Reeve::Testing.reset!
+  end
+end
+
+# specs/002 T041: the same ledger-chain failure through the RSpec shared group carries the
+# check's own words, character for character, as it does through Minitest.
+RSpec.describe "the shared group's ledger chain with no key configured", :reeve_fixtures do
+  it "fails, with the message the check built" do
+    Reeve::Testing.compliance_principals = -> { ReeveFixtures.principals }
+    Reeve::Testing.compliance_tools = [ReeveFixtures::CompliantInvoiceTool]
+
+    group = RSpec.describe("inner") do
+      before do
+        Reeve.config.audit_recorder = Reeve::Audit::Recorder
+        Reeve.config.ledger_key = nil
+        ReeveFixtures::CompliantInvoiceTool.guard_with(ReeveFixtures::GoodInvoicePolicy)
+      end
+
+      it_behaves_like "a reeve-compliant server"
+    end
+    group.run(RSpec::Core::NullReporter)
+    ledger = group.descendants.flat_map(&:examples).find { |e| e.description.include?("LedgerChain") }
+
+    Reeve.config.ledger_key = nil
+    expected = Reeve::Checks.run(Reeve::Checks::LedgerChain, principals: ReeveFixtures.principals).to_s
+    expect(ledger.execution_result.status).to eq(:failed)
+    expect(ledger.execution_result.exception.message).to eq(expected)
   ensure
     RSpec.world.example_groups.delete(group) if group
     Reeve::Testing.reset!

@@ -35,7 +35,7 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
     expect(report).to be_passed
     expect(report.failures).to be_empty
     expect(report.to_s).to start_with(
-      "reeve compliance: 8 checks, 7 passed, 0 failed, 1 skipped\n\nSKIP EndpointCoverage"
+      "reeve compliance: 9 checks, 8 passed, 0 failed, 1 skipped\n\nSKIP EndpointCoverage"
     )
   end
 
@@ -49,7 +49,7 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
   it "names the offending tool and check in a body a human can act on (SC-007)" do
     report = run_all(tools: [ReeveFixtures::LeakyInvoiceTool])
 
-    expect(report.to_s).to start_with("reeve compliance: 8 checks, 6 passed, 1 failed, 1 skipped")
+    expect(report.to_s).to start_with("reeve compliance: 9 checks, 7 passed, 1 failed, 1 skipped")
     expect(report.to_s).to include("FAIL CrossPrincipalLeak")
     expect(report.to_s).to include("ReeveFixtures::LeakyInvoiceTool")
   end
@@ -70,7 +70,7 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
     )
 
     expect(report.failures.size).to be >= 2
-    expect(report.size).to eq(14)
+    expect(report.size).to eq(15) # six per-tool checks for each of two tools, plus three ledger-wide
   end
 
   it "runs with an empty registry rather than blowing up" do
@@ -78,7 +78,8 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
 
     report = run_all
 
-    expect(report.size).to eq(2)
+    # The three ledger-wide checks; LedgerChain has no tool to write with and is skipped.
+    expect(report.size).to eq(3)
     expect(report).to be_passed
   end
 

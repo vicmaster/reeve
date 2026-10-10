@@ -22,6 +22,7 @@ RSpec.describe "loading reeve" do
         Object.const_defined?(name)
       end
       abort "unexpectedly loaded: \#{loaded.join(', ')}" unless loaded.empty?
+      abort "the Railtie loaded without Rails" if Reeve.const_defined?(:Railtie, false)
       puts Reeve::VERSION
     RUBY
 

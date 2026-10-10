@@ -120,7 +120,8 @@ RSpec.describe Reeve::Testing::Assertions, :reeve_fixtures do
         "test_reeve_cross_principal_leak", "test_reeve_audit_coverage",
         "test_reeve_guard_declared", "test_reeve_rule_present",
         "test_reeve_redaction_holds", "test_reeve_principal_required",
-        "test_reeve_contract_version", "test_reeve_endpoint_coverage"
+        "test_reeve_contract_version", "test_reeve_endpoint_coverage",
+        "test_reeve_ledger_chain"
       )
     end
 
@@ -143,6 +144,23 @@ RSpec.describe Reeve::Testing::Assertions, :reeve_fixtures do
     it "skips endpoint coverage, with its reason, when no inventory is declared" do
       expect { test_case.new("x").test_reeve_endpoint_coverage }
         .to raise_error(Minitest::Skip, /no endpoint inventory is declared/)
+    end
+
+    # specs/002 T041 / FR-018: the ledger chain, from Minitest.
+    it "skips the ledger chain, with its reason, when there is no tool to write with" do
+      Reeve::Testing.compliance_tools = []
+
+      expect { test_case.new("x").test_reeve_ledger_chain }
+        .to raise_error(Minitest::Skip, /the ledger chain was not verified/)
+    end
+
+    it "fails the ledger chain with the check's own words when no key is configured" do
+      Reeve.config.ledger_key = nil
+      expected = Reeve::Checks.run(Reeve::Checks::LedgerChain, principals: ReeveFixtures.principals).to_s
+
+      expect { test_case.new("x").test_reeve_ledger_chain }
+        .to raise_error(Minitest::Assertion) { |error| expect(error.message).to eq(expected) }
+      expect(expected).to include("config.ledger_key")
     end
 
     it "fails the matching method, and names the tool, when a tool leaks" do

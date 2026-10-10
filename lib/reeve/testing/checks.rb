@@ -9,6 +9,7 @@ require_relative "checks/redaction_holds"
 require_relative "checks/principal_required"
 require_relative "checks/contract_version"
 require_relative "checks/endpoint_coverage"
+require_relative "checks/ledger_chain"
 
 module Reeve
   module Testing
@@ -31,12 +32,13 @@ module Reeve
         RedactionHolds,
         PrincipalRequired,
         ContractVersion,
-        EndpointCoverage
+        EndpointCoverage,
+        LedgerChain
       ].freeze
 
       # The checks that are asked once — about the ledger, or about the endpoint as a
       # whole — rather than once per tool.
-      GLOBAL = [ContractVersion, EndpointCoverage].freeze
+      GLOBAL = [ContractVersion, EndpointCoverage, LedgerChain].freeze
 
       # The compliance suite's engine (FR-018): every check, against every registered
       # guarded tool, in one Report.
@@ -58,7 +60,7 @@ module Reeve
       def self.run(check, principals:, tools: nil, arguments: {}, invoke: nil, ledger: nil)
         if GLOBAL.include?(check)
           return Report.new([build(check, tool: nil, principals: principals, tools: tools,
-                                          ledger: ledger).call])
+                                          invoke: invoke, ledger: ledger).call])
         end
 
         subjects = tools || Testing.compliance_tools
@@ -91,6 +93,8 @@ module Reeve
         when "GuardDeclared"      then GuardDeclared.new(tool: tool, ledger: ledger)
         when "ContractVersion"    then ContractVersion.new(ledger: ledger)
         when "EndpointCoverage"   then EndpointCoverage.new(tools: tools, ledger: ledger)
+        when "LedgerChain"        then LedgerChain.new(tools: tools, principals: principals,
+                                                       invoke: invoke, ledger: ledger)
         when "PrincipalRequired"  then PrincipalRequired.new(**common)
         when "CrossPrincipalLeak" then CrossPrincipalLeak.new(principals: Array(principals),
                                                               **common)

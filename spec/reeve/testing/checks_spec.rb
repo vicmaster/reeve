@@ -221,11 +221,153 @@ RSpec.describe Reeve::Checks, :reeve_fixtures do
     end
   end
 
+  # specs/002 T040 / FR-018, contracts/ledger-chain.md "Testing kit". The check writes
+  # entries of its own — a suite with transactional fixtures starts every example with an
+  # empty ledger — and then verifies the whole ledger the run can see.
+  describe Reeve::Checks::LedgerChain do
+    def check(**options)
+      described_class.new(tools: [control], principals: [alice, bob], **options)
+    end
+
+    def chained!(count)
+      count.times { Reeve.invoke(tool: control, arguments: {}, principal: alice) }
+    end
+
+    it "passes on an intact chain, stating the range it covered" do
+      result = check.call
+
+      expect(result).to be_passed
+      expect(result.message).to start_with("reeve ledger: INTACT — sequences 1–2 verified")
+    end
+
+    it "invokes the first compliance tool once per fixture principal" do
+      check.call
+
+      expect(Reeve::Audit::Entry.count).to eq(2)
+      expect(Reeve::Audit::Entry.distinct.pluck(:principal_id)).to contain_exactly(alice.id.to_s, bob.id.to_s)
+    end
+
+    # It verifies the whole ledger, not only its own rows: a break an earlier run left on a
+    # database that is not reset between runs is reported, not hidden.
+    it "fails on a break already in the ledger, with the verification's report" do
+      chained!(3)
+      Reeve::Audit::Entry.where(chain_sequence: 2).delete_all
+
+      result = check.call
+
+      expect(result).to be_failed
+      expect(result.message).to start_with("reeve ledger: BROKEN")
+      expect(result.message).to include("missing")
+    end
+
+    it "fails on an unchained entry written after the chain started" do
+      chained!(1)
+      Reeve::Audit::Entry.create!(
+        invocation_id: "inv-unchained", occurred_at: Time.now + 1, agent_id: "a", tool_name: "t",
+        arguments: {}, outcome: "allow", rule: "r", record_ids: [], guard: "policy",
+        contract_version: Reeve::Audit::CONTRACT_VERSION
+      )
+
+      result = check.call
+
+      expect(result).to be_failed
+      expect(result.message).to include("inv-unchained")
+    end
+
+    it "fails, naming the setting, when no key is configured" do
+      Reeve.config.ledger_key = nil
+
+      result = check.call
+
+      expect(result).to be_failed
+      expect(result.message).to include("config.ledger_key")
+    end
+
+    # The run signs its own entries, so a key it cannot verify with is a configuration
+    # error — say, an entry signed under a key the test environment no longer configures.
+    it "fails when part of the chain is signed by a key it does not hold" do
+      Reeve.config.ledger_key = "another-ledger-key-not-a-secret-0123456789"
+      chained!(1)
+      Reeve.config.ledger_key = Ledger::TEST_KEY
+
+      result = check.call
+
+      expect(result).to be_failed
+      expect(result.message).to start_with("reeve ledger: UNVERIFIABLE")
+    end
+
+    # A denial is still a ledger entry. The first principal being refused must not stop the
+    # second from being invoked.
+    it "writes an entry for every principal even when the first is denied" do
+      described_class.new(tools: [control], principals: [nil, bob]).call
+
+      expect(Reeve::Audit::Entry.count).to eq(2)
+    end
+
+    # The tool's own error is recorded before the envelope re-raises it, so the entry exists
+    # and the chain can be verified; the error is the tool's business, not this check's.
+    it "verifies the chain when the tool itself raises, without raising" do
+      stub_const("FailingInvoiceTool", Class.new do
+        include Reeve::Guard
+
+        def call = raise("the tool's own failure")
+      end)
+      FailingInvoiceTool.guard_with(ReeveFixtures::GoodInvoicePolicy)
+
+      result = nil
+      expect { result = described_class.new(tools: [FailingInvoiceTool], principals: [alice]).call }
+        .not_to raise_error
+      expect(result).to be_passed
+    end
+
+    # A check reports; it does not raise. A ledger write that failed is the reason the chain
+    # could not be checked, and the message says so.
+    it "fails, rather than raising, when its own entry could not be written" do
+      Reeve.config.audit_recorder = Class.new { def self.record(*) = raise("ledger down") }
+
+      result = nil
+      expect { result = check.call }.not_to raise_error
+      expect(result).to be_failed
+      expect(result.message).to include("ledger down")
+    end
+
+    it "is skipped, saying the chain was not verified, when there are no compliance tools" do
+      result = described_class.new(tools: [], principals: [alice]).call
+
+      expect(result).to be_skipped
+      expect(result.message).to start_with("the ledger chain was not verified")
+    end
+
+    it "is skipped, saying why, when the ledger is not loaded" do
+      result = check(ledger: ReeveFixtures::FakeLedger.new(available: false)).call
+
+      expect(result).to be_skipped
+      expect(result.message).to include("the ledger chain was not verified").and include("not loaded")
+    end
+
+    # A run that wrote entries and still finds no chain has a recorder that does not chain.
+    it "fails when its own entries were written without a chain" do
+      unchained = Class.new do
+        def self.record(attributes)
+          Reeve::Audit::Chain.new(entry_class: Reeve::Audit::Entry)
+                             .append_unchained!(Reeve::Audit::Recorder.new.send(:row_for, attributes))
+        end
+      end
+      Reeve.config.audit_recorder = unchained
+
+      result = check.call
+
+      expect(result).to be_failed
+      expect(result.message).to include("NO CHAIN")
+    end
+  end
+
   describe "the layer as a whole" do
     it "enumerates the checks the contract names" do
       expect(Reeve::Checks::ALL.map(&:check_name)).to contain_exactly(
         "CrossPrincipalLeak", "AuditCoverage", "GuardDeclared", "RulePresent",
-        "RedactionHolds", "PrincipalRequired", "ContractVersion", "EndpointCoverage"
+        "RedactionHolds", "PrincipalRequired", "ContractVersion", "EndpointCoverage",
+        "LedgerChain"
       )
     end
 

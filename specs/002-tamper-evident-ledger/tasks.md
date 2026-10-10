@@ -327,7 +327,7 @@ against each US2 ledger.
 
 ### Tests first
 
-- [ ] T040 [P] [US4] Extend `spec/reeve/testing/checks_spec.rb` with `LedgerChain`, per the
+- [x] T040 [P] [US4] Extend `spec/reeve/testing/checks_spec.rb` with `LedgerChain`, per the
       table in contracts/ledger-chain.md "Testing kit":
       - intact → passed, stating the range;
       - broken, or any unchained row → failed;
@@ -337,28 +337,28 @@ against each US2 ledger.
         whole visible ledger, not only its own entries).
 
       Also assert it invokes the first compliance tool once per fixture principal
-- [ ] T041 [P] [US4] Extend `spec/reeve/testing/parity_spec.rb`,
+- [x] T041 [P] [US4] Extend `spec/reeve/testing/parity_spec.rb`,
       `spec/reeve/testing/rspec_front_end_spec.rb` and
       `spec/reeve/testing/minitest_front_end_spec.rb`: `LedgerChain` reaches the same result
       in both frameworks, and a skip shows as a skip in both
-- [ ] T042 [P] [US4] Write `spec/reeve/tasks_spec.rb`: `reeve:verify_ledger` exits 0 when
+- [x] T042 [P] [US4] Write `spec/reeve/tasks_spec.rb`: `reeve:verify_ledger` exits 0 when
       intact, 1 when broken, 2 for unverifiable or no chain; `LIMIT=0` prints the summary
       and totals only; `FORMAT=json` emits every break
-- [ ] T043 [P] [US4] Extend `spec/load_safety_spec.rb`: `require "reeve"` with no Rails loaded
+- [x] T043 [P] [US4] Extend `spec/load_safety_spec.rb`: `require "reeve"` with no Rails loaded
       neither loads the Railtie nor raises. Confirm `spec/reeve/testing/isolation_spec.rb`
       still loads the kit with no ActiveRecord
 
 ### Implementation
 
-- [ ] T044 [US4] Add `#verify_chain` to `lib/reeve/testing/ledger.rb`: lazy, returns nil when
+- [x] T044 [US4] Add `#verify_chain` to `lib/reeve/testing/ledger.rb`: lazy, returns nil when
       `reeve/audit` is not loaded, and is the only path from the kit to `Chain.verify`
-- [ ] T045 [US4] Implement `lib/reeve/testing/checks/ledger_chain.rb` (research R10). Add it to
+- [x] T045 [US4] Implement `lib/reeve/testing/checks/ledger_chain.rb` (research R10). Add it to
       `ALL` and `GLOBAL` in `lib/reeve/testing/checks.rb`
-- [ ] T046 [US4] Implement `lib/reeve/railtie.rb` (registers the tasks only) and require it
+- [x] T046 [US4] Implement `lib/reeve/railtie.rb` (registers the tasks only) and require it
       from `lib/reeve.rb` only when `Rails::Railtie` is defined
-- [ ] T047 [US4] Implement `lib/reeve/tasks.rb`: the `reeve:verify_ledger` task, using the Rake
+- [x] T047 [US4] Implement `lib/reeve/tasks.rb`: the `reeve:verify_ledger` task, using the Rake
       DSL in a `.rb` file (research R9)
-- [ ] T048 [US4] Extend the `gemspec.files` assertion in
+- [x] T048 [US4] Extend the `gemspec.files` assertion in
       `spec/reeve/testing/framework_neutrality_spec.rb` to cover `lib/reeve/railtie.rb`,
       `lib/reeve/tasks.rb` and the new upgrade template. Add a `reeve:verify_ledger` run to
       the dummy app in `spec/reeve/quickstart_spec.rb`

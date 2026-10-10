@@ -37,7 +37,8 @@ RSpec.describe "the quickstart", if: rails_available do
       "a redacted argument keeps its name and loses its value",
       "the compliance suite finds the tool this app forgot to guard",
       "and passes once that tool is the only thing excluded",
-      "the kit catches a tool that leaks across principals"
+      "the kit catches a tool that leaks across principals",
+      "bin/rails reeve:verify_ledger finds the chain intact"
     ].each { |promise| expect(output).to include("ok #{promise}") }
   end
 

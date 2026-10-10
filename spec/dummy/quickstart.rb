@@ -159,4 +159,23 @@ step("the kit catches a tool that leaks across principals") do
   !result.passed? && result.message.include?("belonging to another principal")
 end
 
+# --- Step 6: verify the ledger's chain (specs/002) -------------------------------------
+# Every guarded call above was chained. The task the Railtie registers verifies it, the way
+# a scheduled job in production would.
+step("bin/rails reeve:verify_ledger finds the chain intact") do
+  Rails.application.load_tasks
+  report = StringIO.new
+  original = $stdout
+  $stdout = report
+  status = begin
+    Rake::Task["reeve:verify_ledger"].invoke
+    nil
+  rescue SystemExit => e
+    e.status
+  ensure
+    $stdout = original
+  end
+  status.zero? && report.string.start_with?("reeve ledger: INTACT")
+end
+
 puts "QUICKSTART OK"
