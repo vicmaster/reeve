@@ -4,7 +4,7 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.6.0] - 2026-10-10
 
 The ledger has been append-only at the library level since 0.1.0: no API updates or deletes
 an entry, and the generated migration documents the grant that enforces the rest. Nothing
