@@ -583,6 +583,10 @@ touched*. Keep your existing auth.
 Ruby 3.0+, Rails 7.0+. No runtime dependencies. The fast-mcp adapter needs Ruby 3.1+,
 because fast-mcp does.
 
+## Who built this
+
+Built by [Victor Velázquez](https://victorvelazquez.dev) — COO at [MagmaLabs](https://www.magmalabs.io) and author of [*The Agentic Engineer*](https://leanpub.com/theagenticengineer). Reeve guards MCP tools in production at MagmaLabs.
+
 ## License
 
 MIT. See [LICENSE.txt](LICENSE.txt).
