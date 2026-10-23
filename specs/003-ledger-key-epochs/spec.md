@@ -49,15 +49,20 @@ CHANGELOG and output MUST NOT claim more.
   reported as tampering (broken), where 0.6.0 reported it as unverifiable;
 - an epoch-bearing entry whose epoch number was changed, or that names an epoch with no
   record;
-- an epoch record that was edited, deleted, renumbered or inserted;
+- an epoch record that was edited or renumbered; one that was deleted while entries name it
+  or a later epoch follows it; one inserted under a key the verifier holds (an epoch record
+  inserted under a key the verifier does not hold reads as unverifiable — never intact);
 - an entry that names an epoch whose recorded start is after the entry's position.
 
 **Not detected / not changed — stated plainly:**
 
-1. **Entries chained before the first epoch** (written by 0.6.0, or by contract-3 code during a
-   rolling deploy *before* the first epoch opened) keep 0.6.0 semantics exactly: a key the
-   verifier lacks makes them unverifiable, and a rewritten key id on them is still
-   indistinguishable from a missing key.
+1. **Entries without an epoch** — every contract-3 entry, whether chained by 0.6.0 before
+   the first epoch or by a 0.6.0 server during the rolling deploy after it — keep 0.6.0
+   semantics exactly: a key the verifier lacks makes them unverifiable, and a rewritten key id
+   on them is still indistinguishable from a missing key. *(Re-frozen during verification:
+   the earlier wording also checked a contract-3 entry after epoch 0 against the epoch
+   records when its key was absent, which reported a legitimate straggler as BROKEN to a
+   verifier missing its key — against SC-003.)*
 2. **A key the verifier does not hold.** An entry signed by it cannot be checked. Epochs make
    that loss visible and attributed to a named epoch; they do not undo it. Re-signing history
    under a new key remains out of scope (specs/002 FR-016).
@@ -70,6 +75,8 @@ CHANGELOG and output MUST NOT claim more.
 5. **Deletion of every epoch record *together with* rewriting every epoch-bearing entry** back
    to a contract-3 shape under a key id nobody holds: verification ends at unverifiable, never
    intact — the 0.6.0 floor.
+6. **Deletion of the newest epoch record when no entry names it yet** (an epoch the task opened
+   just now). Nothing points at it; this is the epoch-level twin of specs/002's tail truncation.
 
 ## Clarifications
 
@@ -165,9 +172,9 @@ fingerprint; verify reports broken with an `epoch_mismatch` at that sequence.
 
 1. **Given** an epoch-bearing entry, **When** its `chain_key_id` is changed to a fingerprint no
    epoch has, **Then** verification is BROKEN with `epoch_mismatch` at its sequence.
-2. **When** its `chain_key_id` is changed to another epoch's key, **Then** BROKEN: the digest no
-   longer verifies under that key (`digest_mismatch`) or, if that key is not configured, the
-   key is not its epoch's key (`epoch_mismatch`).
+2. **When** its `chain_key_id` is changed to another epoch's key, **Then** BROKEN with
+   `epoch_mismatch`: the key is not its epoch's key, whether or not that key is configured
+   (FR-011 checks the epoch before the digest).
 3. **When** its `chain_epoch` is changed to an epoch with no record, **Then** BROKEN with
    `epoch_missing`.
 4. **When** an epoch record is deleted, edited, or its number or start changed, **Then**
@@ -237,7 +244,13 @@ configured key. Verification is INTACT and reports the pre-epoch range separatel
 - **No `ledger_key` configured**: writes behave as in 0.6.0 (`LedgerKeyError`, or an unchained
   row under `:warn`); no epoch is opened.
 - **Rotation task on a ledger with no chain yet**: starts the chain and opens epoch 0 with the
-  configured key; reports ROTATED (epoch 0).
+  configured key; reports ROTATED (epoch 0). Verification of a ledger with no entries reports
+  NO CHAIN, as in 0.6.0, until the first entry is written.
+- **Two rotations with no write between them**: both epochs begin at the same sequence; the
+  earlier one simply never signs anything. Not a break.
+- **Gem upgraded, migration not yet run**: writes fail with the FR-018 `ConfigurationError`;
+  verification reads the ledger as having no epochs (0.6.0 semantics), since no entry can name
+  one yet.
 - **Rotation task when the configured key opened the current epoch**: CURRENT, exit 0. If the
   previous epoch's key is not configured here, the output says so on a warning line (exit
   stays 0: nothing was refused, and verification will report it).
@@ -302,8 +315,10 @@ configured key. Verification is INTACT and reports the pre-epoch range separatel
 **Verification**
 
 - **FR-010**: Verification reads every epoch record and checks: numbering 0..n without gaps
-  (else `epoch_missing`); `first_sequence` strictly increasing with epoch number, and no later
-  than one past the head (else `epoch_altered`); key ids distinct (else `epoch_altered`); each
+  (else `epoch_missing`); `first_sequence` non-decreasing with epoch number — two rotations
+  with no write between them begin at the same sequence — and no later than one past the head
+  (else `epoch_altered`) *(re-frozen during verification: "strictly increasing" made two
+  back-to-back rotations a permanent false BROKEN)*; key ids distinct (else `epoch_altered`); each
   record's digest under its key when that key is configured (else `epoch_altered`; if the key is
   not configured, the epoch is reported unverifiable, not broken).
 - **FR-011**: For each chained entry:
@@ -311,16 +326,15 @@ configured key. Verification is INTACT and reports the pre-epoch range separatel
     the entry's key id must be that epoch's key (else `epoch_mismatch`); its sequence must not
     precede the epoch's `first_sequence` (else `epoch_mismatch`); then its digest is checked as
     in 0.6.0.
-  - without one (contract 3) positioned at or after epoch 0's `first_sequence`: if its key is
-    configured, its digest is checked as in 0.6.0; if not, its key id must be one some epoch
-    opened at or before its position (else `epoch_mismatch`), and the entry is unverifiable.
-  - without one positioned before epoch 0 (or with no epochs at all): exactly 0.6.0.
+  - without one (contract 3), wherever it is positioned: exactly 0.6.0 (guarantee item 1).
+    Those positioned before epoch 0's `first_sequence` are counted as `before_first_epoch`.
 - **FR-012**: `epoch_missing`, `epoch_mismatch` and `epoch_altered` are breaks: status BROKEN,
   exit 1. A configured-key absence remains `unknown_key`: UNVERIFIABLE, exit 2.
 - **FR-013**: The result lists the epochs: for each, its number, key fingerprint,
   `first_sequence`, how many walked entries named it, and one of `verified` (record and all its
   entries checked), `key_not_configured`, or `altered`. JSON gains an `epochs` array with those
-  fields and `before_first_epoch` (the count of chained entries positioned before epoch 0).
+  fields and `before_first_epoch` (the integer count of chained entries positioned before
+  epoch 0; null, like `head_at_start`, when nothing was walked — no key, or no chain).
   The text report lists one line per epoch after the summary (and totals) whenever there are
   two or more epochs, any epoch is not `verified`, or chained rows precede the first epoch
   (then a "before epoch 0" line comes first, with their count); a ledger with a single
@@ -344,6 +358,12 @@ configured key. Verification is INTACT and reports the pre-epoch range separatel
 - **FR-018**: A chained write against a table missing `chain_epoch` or the epochs table raises
   `ConfigurationError` naming `bin/rails generate reeve:upgrade`.
 - **FR-019**: `Reeve::Checks::ContractVersion` expects 4 and the new column.
+- **FR-019a**: Epoch records are read for verification from the ledger's own database; if
+  `Reeve::Audit::ChainEpoch` is connected elsewhere, verification refuses with a
+  `ConfigurationError` naming the fix, as specs/002 does for `ChainRecord`. *(Added during
+  verification.)*
+- **FR-019b**: The FR-018 check costs no query per write in the steady state beyond FR-004's
+  point read. *(Added during verification.)*
 - **FR-020**: The audit-entry contract document records contract 4 in its history with the
   rationale above, and its versioning rule states the exception explicitly: an added nullable
   column is MAJOR when what an absence means, or what an existing value covers, changes.
