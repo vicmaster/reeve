@@ -4,7 +4,7 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.7.0] - 2026-10-23
 
 0.6.0 let a ledger be verified across a key rotation, provided the old key was kept as a
 retired key. It did not record the rotation itself: nothing in the ledger said which key had
@@ -687,6 +687,7 @@ is for:
 - **A change that widens access is breaking by definition** — major version, plus a
   migration note saying exactly what became visible that was not visible before.
 - Adding a nullable ledger column is minor and leaves the audit-entry contract version
-  alone. Removing or renaming a column, or changing what a value means, is major and bumps
-  it.
-- The audit-entry contract version is `3`.
+  alone — unless what its absence means, or what an existing value covers, differs between
+  rows written before and after it, which is major (contracts 3 and 4 are both examples).
+  Removing or renaming a column, or changing what a value means, is major and bumps it.
+- The audit-entry contract version is `4`.
