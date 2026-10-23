@@ -121,13 +121,14 @@ RSpec.describe "a verification's report" do
 
       expect(json.keys).to contain_exactly(
         "status", "covered", "head_at_start", "head_at_end", "uncovered_now", "uncovered_at_genesis",
-        "unchained_now", "unchained_at_genesis", "unverifiable_count", "totals", "breaks", "reason"
+        "unchained_now", "unchained_at_genesis", "unverifiable_count", "totals", "breaks", "reason",
+        "epochs", "before_first_epoch"
       )
       expect(json["status"]).to eq("broken")
       expect(json["covered"]).to eq("first" => 1, "last" => 9)
       expect(json["breaks"]).to eq([{ "kind" => "missing", "sequence" => { "first" => 3, "last" => 4 },
                                       "detail" => "2 entries not found", "invocation_id" => nil,
-                                      "key_id" => nil }])
+                                      "key_id" => nil, "epoch" => nil }])
     end
   end
 

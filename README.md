@@ -230,8 +230,31 @@ Rotating `secret_key_base` therefore rotates the ledger key. Keep the old one, o
 entries it signed become *unverifiable* — reported as such, never as tampered:
 
 ```ruby
-config.retired_ledger_keys = [old_key]   # verify with these; never sign with them
+config.retired_ledger_keys = [old_key]   # verify with these; new epochs never open with them
 ```
+
+**Rotating the key.** Every key that signs the ledger opens a numbered *key epoch*, and every
+entry records its epoch inside its digest. To rotate: set the new key as `ledger_key` and the
+old one in `retired_ledger_keys` (in that order), deploy, then run
+
+```bash
+bin/rails reeve:rotate_ledger_key
+```
+
+It reports `ROTATED` or `CURRENT` (exit `0`), or `REFUSED` (exit `1`, nothing written) — for
+instance when the current epoch's key is not configured where it runs, since that epoch's
+entries would become unverifiable there. Writes never wait for it: the first write with the
+new key opens its epoch, and servers still on the old key during the deploy keep writing
+under theirs. From Ruby:
+
+```ruby
+rotation = Reeve::Audit::Chain.rotate_key!
+rotation.status   # => :rotated, :current or :refused
+rotation.epoch    # => 1
+```
+
+Verification then lists each epoch under its summary line, with the key fingerprint, where
+it begins, and whether it verified. The CHANGELOG has the full procedure.
 
 A dedicated key decouples the two: `config.ledger_key = Rails.application.credentials.reeve_ledger_key`.
 Keys must be at least 32 bytes and are only ever printed as 16-character fingerprints.
@@ -245,7 +268,10 @@ recorded unchained instead, logged each time, and reported by verification.
 - chained rows swapped, renumbered or moved, or a row inserted that Reeve did not write —
   including one numbered past the head;
 - the newest rows removed while the chain record was left alone;
-- the chain record removed while chained rows remain.
+- the chain record removed while chained rows remain;
+- an entry whose key id or key epoch was changed, or that names an epoch with no record, and
+  an epoch record that was changed, or removed while entries name it (one forged under a key
+  you do not hold reads as unverifiable, never intact).
 
 **Not detected** — stated plainly, because these are the limits of the guarantee:
 
@@ -256,7 +282,11 @@ recorded unchained instead, logged each time, and reported by verification.
 3. **The whole ledger deleted, chain record included.** Reported as *no chain*, never as a
    pass — but indistinguishable from a ledger that was never chained.
 4. **Rows written before you upgraded.** They are counted as "not covered" and are exactly
-   as trustworthy as they were before.
+   as trustworthy as they were before. Likewise, entries without a key epoch — chained by
+   0.6.0, before or during the upgrade — are checked as 0.6.0 checked them: a rewritten key id
+   on one of them reads as unverifiable, not as tampering.
+5. **A key you no longer hold.** Entries it signed cannot be checked, by anyone. Epochs make
+   that visible and name the epoch; they do not undo it.
 
 And it prevents nothing: it detects a change after the fact. The `GRANT INSERT, SELECT` in
 the generated migration is what prevents one. The chain record needs `UPDATE` as well,
@@ -279,6 +309,10 @@ same door the built-in ones use, or verification reports them as unchained:
 ```ruby
 Reeve::Audit::Chain.new(entry_class: Reeve::Audit::Entry).append!(row)
 ```
+
+**Upgrading from 0.6.0:** `bin/rails generate reeve:upgrade && bin/rails db:migrate` before
+the new code serves traffic, and grant `INSERT, SELECT` on `reeve_audit_chain_epochs`. The next guarded call opens epoch 0;
+earlier entries are listed as "before epoch 0" and checked as before.
 
 **Upgrading from 0.5.0:**
 

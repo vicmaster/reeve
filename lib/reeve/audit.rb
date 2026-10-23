@@ -59,8 +59,14 @@ module Reeve
   module Audit
     # The version of the audit-entry shape, as documented in
     # specs/001-guardrails-core/contracts/audit-entry.md (FR-015). Adding a nullable
-    # column is a MINOR change and leaves this alone; removing or renaming a column, or
-    # changing what a value means, is MAJOR and bumps it.
+    # column is a MINOR change and leaves this alone — unless what its absence means, or
+    # what an existing value covers, differs between rows written before and after it;
+    # removing or renaming a column, or changing what a value means, is MAJOR and bumps it.
+    #
+    # 4 — entries name their key epoch (specs/003). One nullable column, `chain_epoch`, but
+    # it is inside the digest, so `chain_digest` on a contract-4 row covers something a
+    # contract-3 digest does not, and a NULL epoch means "before key epochs" on a contract-3
+    # row where a chained contract-4 row always has one.
     #
     # 3 — entries are chained (specs/002). The three chain columns are nullable, so the
     # shape change is additive, but what a NULL digest means changed: on a contract-3 row
@@ -71,7 +77,7 @@ module Reeve
     # was written NULL on every row regardless of what was passed, so anything mapping
     # version 1 rows could reasonably have read the column as "always empty". The shape
     # did not change; what a value means did.
-    CONTRACT_VERSION = 3
+    CONTRACT_VERSION = 4
 
     TABLE_NAME = "reeve_audit_entries"
 
@@ -108,9 +114,14 @@ require_relative "audit/chain/keyring"
 require_relative "audit/chain/normalizer"
 require_relative "audit/chain/canonical"
 require_relative "audit/chain_record"
+require_relative "audit/chain_epoch"
 require_relative "audit/chain/verification"
 require_relative "audit/chain/report"
 require_relative "audit/chain/head"
+require_relative "audit/chain/epochs"
+require_relative "audit/chain/rotation"
+require_relative "audit/chain/epoch_rules"
+require_relative "audit/chain/schema"
 require_relative "audit/chain/walk"
 require_relative "audit/chain/verifier"
 require_relative "audit/chain"

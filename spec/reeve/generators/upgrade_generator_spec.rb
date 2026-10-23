@@ -62,9 +62,31 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
     connection.change_column_default :reeve_audit_entries, :contract_version, from: 1, to: nil
   end
 
+  # Contract 3 is contract 2 plus the chain, built the way the 2 → 3 migration builds it.
+  # rubocop:disable-next Metrics/AbcSize -- a schema literal, as for contract 1 above
+  def create_contract_3_table
+    create_contract_2_table
+    connection.add_column :reeve_audit_entries, :chain_sequence, :bigint
+    connection.add_column :reeve_audit_entries, :chain_key_id, :string, limit: 16
+    connection.add_column :reeve_audit_entries, :chain_digest, :string, limit: 64
+    connection.add_index :reeve_audit_entries, :chain_sequence, unique: true
+    connection.create_table :reeve_audit_chains do |t|
+      t.string   :name,                      null: false
+      t.datetime :genesis_at,                null: false, precision: 6
+      t.bigint   :pre_chain_count,           null: false
+      t.bigint   :pre_chain_unchained_count, null: false
+      t.string   :genesis_key_id,            null: false, limit: 16
+      t.string   :genesis_digest,            null: false, limit: 64
+      t.bigint   :head_sequence,             null: false
+      t.string   :head_digest,               null: false, limit: 64
+    end
+    connection.add_index :reeve_audit_chains, :name, unique: true
+  end
+
   def drop_ledger
     connection.drop_table(:reeve_audit_entries, if_exists: true)
     connection.drop_table(:reeve_audit_chains, if_exists: true)
+    connection.drop_table(:reeve_audit_chain_epochs, if_exists: true)
   end
 
   # Oldest first, which is the order the generator numbers them in and the order a host's
@@ -105,7 +127,8 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
     {
       entries: connection.indexes(:reeve_audit_entries).select { |i| i.columns == ["chain_sequence"] }
                          .map { |i| [i.columns, i.unique] },
-      chains: connection.indexes(:reeve_audit_chains).map { |i| [i.columns, i.unique] }
+      chains: connection.indexes(:reeve_audit_chains).map { |i| [i.columns, i.unique] },
+      epochs: connection.indexes(:reeve_audit_chain_epochs).map { |i| [i.columns, i.unique] }.sort
     }
   end
 
@@ -124,7 +147,8 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
     FileUtils.rm_rf(destination)
     drop_ledger
     Reeve::Audit::Entry.reset_column_information if defined?(Reeve::Audit::Entry)
-    %i[AddContractVersionToReeveAuditEntries AddLedgerChainToReeveAuditEntries].each do |name|
+    %i[AddContractVersionToReeveAuditEntries AddLedgerChainToReeveAuditEntries
+       AddKeyEpochsToReeveAuditEntries].each do |name|
       Object.send(:remove_const, name) if Object.const_defined?(name, false)
     end
   end
@@ -138,13 +162,14 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
       written = migrations.sort.map { |path| File.basename(path).sub(/\A\d{14}_/, "") }
 
       expect(written).to eq(%w[add_contract_version_to_reeve_audit_entries.rb
-                               add_ledger_chain_to_reeve_audit_entries.rb])
+                               add_ledger_chain_to_reeve_audit_entries.rb
+                               add_key_epochs_to_reeve_audit_entries.rb])
     end
 
     it "says what it wrote and what to run next" do
       output = run_upgrade
 
-      expect(output).to include("audit-entry contract 3")
+      expect(output).to include("audit-entry contract 4")
       expect(output).to include("bin/rails db:migrate")
     end
 
@@ -174,12 +199,14 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
     it "rolls back cleanly" do
       run_upgrade
       migrate_all_up
+      AddKeyEpochsToReeveAuditEntries.new.migrate(:down)
       AddLedgerChainToReeveAuditEntries.new.migrate(:down)
       AddContractVersionToReeveAuditEntries.new.migrate(:down)
 
       names = connection.columns(:reeve_audit_entries).map(&:name)
-      expect(names).not_to include("contract_version", "chain_sequence")
+      expect(names).not_to include("contract_version", "chain_sequence", "chain_epoch")
       expect(connection.table_exists?(:reeve_audit_chains)).to be(false)
+      expect(connection.table_exists?(:reeve_audit_chain_epochs)).to be(false)
     end
   end
 
@@ -187,11 +214,12 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
   describe "on a ledger one contract behind (contract 2)" do
     before { create_contract_2_table }
 
-    it "writes only the chain step" do
+    it "writes the chain step and the key-epoch step" do
       run_upgrade
 
       expect(migrations.map { |path| File.basename(path) })
-        .to contain_exactly(match(/\A\d{14}_add_ledger_chain_to_reeve_audit_entries\.rb\z/))
+        .to contain_exactly(match(/\A\d{14}_add_ledger_chain_to_reeve_audit_entries\.rb\z/),
+                            match(/\A\d{14}_add_key_epochs_to_reeve_audit_entries\.rb\z/))
     end
 
     it "leaves every existing row exactly as it was" do
@@ -210,9 +238,9 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
       migrate_all_up
 
       after_upgrade = connection.select_all("SELECT * FROM reeve_audit_entries").to_a
-      expect(after_upgrade.map { |row| row.except("chain_sequence", "chain_key_id", "chain_digest") })
-        .to eq(before_upgrade)
-      expect(after_upgrade.first.values_at("chain_sequence", "chain_key_id", "chain_digest")).to eq([nil, nil, nil])
+      chain = %w[chain_sequence chain_key_id chain_digest chain_epoch]
+      expect(after_upgrade.map { |row| row.except(*chain) }).to eq(before_upgrade)
+      expect(after_upgrade.first.values_at(*chain)).to eq([nil, nil, nil, nil])
     end
 
     # Without the key line, the first guarded call after migrating fails closed. The host
@@ -230,11 +258,77 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
       run_upgrade
       migrate_all_up
       Object.send(:remove_const, :AddLedgerChainToReeveAuditEntries)
+      Object.send(:remove_const, :AddKeyEpochsToReeveAuditEntries)
 
       output = run_upgrade
 
       expect(migrations).to be_empty
-      expect(output).to include("already at audit-entry contract 3")
+      expect(output).to include("already at audit-entry contract 4")
+    end
+  end
+
+  # specs/003 FR-016, US5: the upgrade a 0.6.0 host makes.
+  describe "on a ledger one contract behind (contract 3)" do
+    before { create_contract_3_table }
+
+    it "writes only the key-epoch step" do
+      run_upgrade
+
+      expect(migrations.map { |path| File.basename(path) })
+        .to contain_exactly(match(/\A\d{14}_add_key_epochs_to_reeve_audit_entries\.rb\z/))
+    end
+
+    it "leaves every existing row exactly as it was" do
+      connection.insert_fixture(
+        {
+          "invocation_id" => "old-row", "occurred_at" => "2026-01-01 00:00:00",
+          "agent_id" => "a", "tool_name" => "T", "arguments" => "{}", "outcome" => "allow",
+          "rule" => "R", "record_ids" => "[]", "record_count" => 0,
+          "truncated" => false, "derived" => false, "guard" => "policy", "contract_version" => 3,
+          "chain_sequence" => 1, "chain_key_id" => "0123456789abcdef", "chain_digest" => "a" * 64
+        },
+        "reeve_audit_entries"
+      )
+      before_upgrade = connection.select_all("SELECT * FROM reeve_audit_entries").to_a
+
+      run_upgrade
+      migrate_all_up
+
+      after_upgrade = connection.select_all("SELECT * FROM reeve_audit_entries").to_a
+      expect(after_upgrade.map { |row| row.except("chain_epoch") }).to eq(before_upgrade)
+      expect(after_upgrade.first["chain_epoch"]).to be_nil
+    end
+
+    it "says the ledger records key epochs and how to rotate" do
+      output = run_upgrade
+
+      expect(output).to include("audit-entry contract 4")
+      expect(output).to include("bin/rails reeve:rotate_ledger_key")
+    end
+
+    it "is a no-op once applied" do
+      run_upgrade
+      migrate_all_up
+      Object.send(:remove_const, :AddKeyEpochsToReeveAuditEntries)
+
+      output = run_upgrade
+
+      expect(migrations).to be_empty
+      expect(output).to include("already at audit-entry contract 4")
+    end
+  end
+
+  describe "on a ledger with the epoch column but no epochs table" do
+    before do
+      create_contract_3_table
+      connection.add_column :reeve_audit_entries, :chain_epoch, :integer
+    end
+
+    it "does not report the ledger as current" do
+      output = run_upgrade
+
+      expect(output).not_to include("already at audit-entry contract 4")
+      expect(migrations.size).to eq(1)
     end
   end
 
@@ -275,7 +369,7 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
       run_upgrade
       run_upgrade(fresh: false)
 
-      expect(migrations.size).to eq(2)
+      expect(migrations.size).to eq(3)
     end
   end
 
@@ -293,13 +387,15 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
       drop_ledger
       load Dir[File.join(install_destination, "db/migrate/*_create_reeve_audit_entries.rb")].first
       CreateReeveAuditEntries.new.migrate(:up)
-      fresh = [shape_of(:reeve_audit_entries), shape_of(:reeve_audit_chains), indexes_of]
+      fresh = [shape_of(:reeve_audit_entries), shape_of(:reeve_audit_chains),
+               shape_of(:reeve_audit_chain_epochs), indexes_of]
 
       # Path B: a contract 1 table, upgraded through every step.
       create_contract_1_table
       run_upgrade
       migrate_all_up
-      upgraded = [shape_of(:reeve_audit_entries), shape_of(:reeve_audit_chains), indexes_of]
+      upgraded = [shape_of(:reeve_audit_entries), shape_of(:reeve_audit_chains),
+                  shape_of(:reeve_audit_chain_epochs), indexes_of]
 
       expect(upgraded).to eq(fresh)
     ensure

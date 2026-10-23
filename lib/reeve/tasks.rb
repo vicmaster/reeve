@@ -14,6 +14,7 @@ module Reeve
   module Tasks
     EXIT = { intact: 0, broken: 1, unverifiable: 2, no_chain: 2 }.freeze
     FORMATS = %w[text json].freeze
+    ROTATE_EXIT = { rotated: 0, current: 0, refused: 1 }.freeze
 
     module_function
 
@@ -35,6 +36,28 @@ module Reeve
       EXIT.fetch(result.status)
     end
 
+    # Makes the configured ledger key the latest epoch's key (specs/003, contracts/
+    # key-rotation.md), writes what happened to `out`, and returns the exit status: 0 rotated
+    # or already current, 1 refused.
+    #
+    # ACCEPT_UNVERIFIABLE=1 opens the epoch even though the outgoing epoch's key is not
+    # configured here — for a key that is lost, and only then.
+    def rotate_ledger_key(env: ENV, out: $stdout)
+      accept = accept_unverifiable_from(env)
+      require "reeve/audit"
+      rotation = Reeve::Audit::Chain.rotate_key!(accept_unverifiable: accept)
+      out.puts(rotation.to_s)
+      ROTATE_EXIT.fetch(rotation.status)
+    end
+
+    def accept_unverifiable_from(env)
+      raw = env.fetch("ACCEPT_UNVERIFIABLE", "")
+      return false if raw.empty?
+      return true if raw == "1"
+
+      raise ArgumentError, "ACCEPT_UNVERIFIABLE must be 1 or unset, got #{raw.inspect}"
+    end
+
     def limit_from(env)
       raw = env.fetch("LIMIT", Reeve::Audit::Chain::Verification::DEFAULT_LIMIT.to_s)
       Integer(raw, 10).tap { |limit| raise ArgumentError if limit.negative? }
@@ -54,6 +77,12 @@ module Reeve
                "(exit 0 intact, 1 broken, 2 could not verify; LIMIT=, FORMAT=json)"
           task verify_ledger: :environment do
             exit Reeve::Tasks.verify_ledger
+          end
+
+          desc "Make config.ledger_key the ledger's current key epoch (exit 0 rotated or " \
+               "current, 1 refused; ACCEPT_UNVERIFIABLE=1 if the old key is lost)"
+          task rotate_ledger_key: :environment do
+            exit Reeve::Tasks.rotate_ledger_key
           end
         end
       end

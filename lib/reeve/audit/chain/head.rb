@@ -18,6 +18,17 @@ module Reeve
       # engines: SQLite cannot upgrade a read lock while another writer waits, and ignores
       # SELECT ... FOR UPDATE.
       class Head
+        LOCKING_READ_ADAPTERS = /mysql|trilogy/i
+
+        # A read made under the head's lock must see the latest committed rows. PostgreSQL
+        # and SQLite read them anyway; InnoDB at REPEATABLE READ serves a plain SELECT from
+        # the snapshot of the caller's transaction, which a writer that committed while this
+        # one queued for the lock is not in (code review, specs/003). A locking read is
+        # current; LOCK IN SHARE MODE is the spelling every MySQL version accepts.
+        def self.current(connection, sql)
+          connection.adapter_name.match?(LOCKING_READ_ADAPTERS) ? "#{sql} LOCK IN SHARE MODE" : sql
+        end
+
         def initialize(connection:, entry_class:)
           @connection = connection
           @entry_class = entry_class
@@ -62,14 +73,31 @@ module Reeve
           [Integer(head["head_sequence"]), head["head_digest"]]
         end
 
+        # Takes the head's lock without consuming a sequence (specs/003 FR-008) and returns the
+        # head: a rotation queues at the same point as a write, so the epoch it opens begins
+        # exactly one past the last row any writer committed. A write that changes nothing
+        # still takes the row lock on PostgreSQL and MySQL and the write lock on SQLite.
+        def lock!
+          updated = connection.update("UPDATE #{TABLE} SET head_sequence = head_sequence " \
+                                      "WHERE #{named}")
+          raise ActiveRecord::StatementInvalid, "the ledger chain record vanished" if updated.zero?
+
+          sql = "SELECT head_sequence FROM #{TABLE} WHERE #{named}"
+          Integer(connection.select_value(Head.current(connection, sql)))
+        end
+
         def point_at!(digest)
           connection.update("UPDATE #{TABLE} SET head_digest = #{connection.quote(digest)} " \
                             "WHERE #{named}")
         end
 
+        # The connection this append runs on; Epochs uses it so the epoch an append opens
+        # commits or rolls back with the append.
+        attr_reader :connection
+
         private
 
-        attr_reader :connection, :entry_class
+        attr_reader :entry_class
 
         def increment
           connection.update("UPDATE #{TABLE} SET head_sequence = head_sequence + 1 WHERE #{named}")

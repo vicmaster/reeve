@@ -201,7 +201,7 @@ RSpec.describe Reeve::Checks, :reeve_fixtures do
 
       expect(result).not_to be_passed
       expect(result.message).to eq(
-        "expected the ledger to implement audit-entry contract version 3, but " \
+        "expected the ledger to implement audit-entry contract version 4, but " \
         "reeve_audit_entries is missing: guard, metadata — run `rails g reeve:upgrade` " \
         "and migrate"
       )
@@ -215,7 +215,7 @@ RSpec.describe Reeve::Checks, :reeve_fixtures do
 
       expect(result).not_to be_passed
       expect(result.message).to eq(
-        "expected the ledger to implement audit-entry contract version 3, but it reports " \
+        "expected the ledger to implement audit-entry contract version 4, but it reports " \
         "version 1 — this reeve version cannot read that shape"
       )
     end

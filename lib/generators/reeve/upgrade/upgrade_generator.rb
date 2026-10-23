@@ -2,6 +2,7 @@
 
 require "rails/generators"
 require "rails/generators/active_record"
+require_relative "upgrade_notes"
 
 module Reeve
   module Generators
@@ -50,11 +51,17 @@ module Reeve
           creates: %w[reeve_audit_chains],
           template: "add_ledger_chain_to_reeve_audit_entries.rb.tt",
           destination: "add_ledger_chain_to_reeve_audit_entries.rb"
+        },
+        {
+          contract: 4,
+          adds: %w[chain_epoch],
+          creates: %w[reeve_audit_chain_epochs],
+          template: "add_key_epochs_to_reeve_audit_entries.rb.tt",
+          destination: "add_key_epochs_to_reeve_audit_entries.rb"
         }
       ].freeze
 
-      KEY_LINE = "config.ledger_key = " \
-                 'Rails.application.key_generator.generate_key("reeve audit ledger", 32)'
+      KEY_LINE = UpgradeNotes::KEY_LINE
 
       source_root File.expand_path("templates", __dir__)
 
@@ -117,29 +124,7 @@ module Reeve
           Existing rows are stamped with the contract they were actually written under,
           not with the current one.
         NEXT
-        message += chain_message if @emitted.any? { |step| step[:contract] == 3 }
-        message
-      end
-
-      # Contract 3 changes what the application must configure, not only the table: without
-      # a key, every guarded call fails closed once the migration runs. The host is reading
-      # this output at exactly the moment they need to know that.
-      def chain_message
-        <<~CHAIN
-
-          The ledger is now chained (contract 3). Add this line to config/initializers/reeve.rb
-          before you deploy, or every guarded call fails closed:
-
-            #{KEY_LINE}
-
-          It derives the key from secret_key_base, so rotating secret_key_base rotates the
-          ledger key: keep the old derived key in config.retired_ledger_keys, or entries it
-          signed become unverifiable. A dedicated key avoids that coupling.
-
-          Very large ledger on PostgreSQL? The migration builds a unique index that blocks
-          writes while it scans; the migration's header shows how to build it with
-          algorithm: :concurrently instead.
-        CHAIN
+        message + UpgradeNotes.for(@emitted.map { |step| step[:contract] })
       end
 
       # Asked of the table rather than of a version the host recorded: the table is the

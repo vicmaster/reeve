@@ -4,6 +4,178 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
+## [Unreleased]
+
+0.6.0 let a ledger be verified across a key rotation, provided the old key was kept as a
+retired key. It did not record the rotation itself: nothing in the ledger said which key had
+signed which stretch of it. So an entry whose key id was rewritten to a fingerprint nobody
+holds read as "signed by a key you don't have" (exit 2), not as tampering, and an operator
+who replaced the key without keeping the old one learned it only when verification later
+came back unverifiable. Now every key that signs the ledger opens a numbered **key epoch**,
+every new entry records its epoch inside its digest, and `bin/rails reeve:rotate_ledger_key`
+performs and checks a rotation.
+
+**Audit-entry contract `3` → `4`, and a migration is required.** One nullable column,
+`chain_epoch`, and one new table, `reeve_audit_chain_epochs`. The bump is MAJOR by the
+contract's own rule, for two reasons: `chain_digest` on a contract-4 entry covers the epoch,
+which a contract-3 digest does not, and a NULL epoch means "chained before key epochs" on a
+contract-3 entry where a chained contract-4 entry always has one. The rule's wording now
+states that exception instead of leaving it to precedent.
+
+### Upgrading from 0.6.0
+
+1. Update the gem, then generate and run the migration. Nothing in your initializer changes.
+
+   ```bash
+   bundle update reeve
+   bin/rails generate reeve:upgrade
+   bin/rails db:migrate
+   ```
+
+   Migrate before the new code serves traffic: until the table is migrated, every chained
+   write fails with a `Reeve::ConfigurationError` naming `reeve:upgrade`, so guarded calls fail
+   closed. (`bin/rails reeve:verify_ledger` keeps working on an unmigrated table and checks it
+   as 0.6.0 did.)
+
+2. Grant the application's database role `INSERT` and `SELECT` on the new table — never
+   `UPDATE`:
+
+   ```sql
+   GRANT INSERT, SELECT ON reeve_audit_chain_epochs TO app_role;
+   ```
+
+3. Deploy. The first chained write after the migration — normally the first guarded tool
+   call — opens epoch 0 with your configured `ledger_key`. Until then, verification shows no
+   epochs. Entries already in the ledger are not touched; verification lists them as "before
+   epoch 0" and checks them exactly as 0.6.0 did.
+
+Servers still running 0.6.0 during the deploy keep writing contract-3 entries. They are never
+reported as tampering: they verify wherever their key is configured, and are unverifiable
+where it is not, exactly as in 0.6.0.
+
+### Rotating the ledger key
+
+Do these in order. The old key stays configured throughout: it is what verifies the
+entries it signed, for as long as you keep it.
+
+1. Configure the new key as `ledger_key` and move the old one to `retired_ledger_keys`.
+   Assign `ledger_key` first — a key may not be both the signing key and a retired one,
+   even for the moment between the two lines:
+
+   ```ruby
+   config.ledger_key = Rails.application.credentials.reeve_ledger_key_2026
+   config.retired_ledger_keys = [Rails.application.credentials.reeve_ledger_key_2025]
+   ```
+
+   If your `ledger_key` is the one the generated initializer derives from
+   `secret_key_base`, rotating `secret_key_base` is this step, and the old derived key must be
+   captured *before* you change `secret_key_base`, while the app can still derive it:
+
+   ```bash
+   bin/rails runner 'puts [Rails.application.key_generator.generate_key("reeve audit ledger", 32)].pack("m0")'
+   ```
+
+   Store the printed value in credentials (say as `reeve_ledger_key_previous`), rotate
+   `secret_key_base`, and keep the derived line as it is:
+
+   ```ruby
+   config.ledger_key = Rails.application.key_generator.generate_key("reeve audit ledger", 32)
+   config.retired_ledger_keys = [Rails.application.credentials.reeve_ledger_key_previous.unpack1("m0")]
+   ```
+
+2. Deploy everywhere. From the first write a server makes with the new key, that key opens
+   the next epoch. Servers still on the old key during the deploy keep writing under the old
+   epoch; those entries verify. No write fails because a rotation is under way.
+
+3. Run the rotation task once the deploy has finished, on a host configured like your
+   servers (both keys):
+
+   ```bash
+   bin/rails reeve:rotate_ledger_key
+   ```
+
+   It prints one of three first lines and exits accordingly:
+
+   | First line | Exit | Meaning |
+   |---|---|---|
+   | `reeve ledger key: ROTATED — epoch N opened with key …` | 0 | The task opened the new epoch, starting one past the newest entry. |
+   | `reeve ledger key: CURRENT — epoch N already signs with the configured key …` | 0 | A write already opened it — the usual result on a ledger that was written to during the deploy — or you ran the task twice. Nothing written. |
+   | `reeve ledger key: REFUSED — …; nothing was written` | 1 | See below. Nothing written. |
+
+   It refuses when no `ledger_key` is configured; when the configured key already opened an
+   earlier epoch (a key opens one epoch, ever — configure a new one); and when the current
+   epoch's key is not configured on the host running the task, because that epoch's entries
+   would become unverifiable there. The last refusal names the fix: add the old key to
+   `retired_ledger_keys`. Only if that key is truly lost, run
+   `ACCEPT_UNVERIFIABLE=1 bin/rails reeve:rotate_ledger_key`: it reports ROTATED (exit 0) and
+   adds a line starting `warning: ` saying the earlier epoch is unverifiable on this host. The
+   same `warning: ` line on a CURRENT result means the same thing about the previous epoch.
+
+   Keys are never printed, only their 16-character fingerprints. The same result is
+   available from Ruby as a value: `Reeve::Audit::Chain.rotate_key!` returns a `Rotation`
+   with `status`, `reason`, `epoch`, `key_id`, `first_sequence`, `previous_epoch`,
+   `previous_key_id` and `warnings`.
+
+4. Verify:
+
+   ```bash
+   bin/rails reeve:verify_ledger
+   ```
+
+   With both keys configured it reports INTACT and, under the summary, one line per epoch
+   with its key fingerprint, the sequence it begins at, how many entries named it, and
+   `verified`. An epoch whose key is not configured where you run it is listed as
+   `key not configured`, and the run is UNVERIFIABLE (exit 2) — never INTACT.
+
+5. Keep the old key in `retired_ledger_keys` for as long as the entries it signed must
+   verify — in practice, for the life of the ledger. Removing it makes every run on that host
+   UNVERIFIABLE (exit 2) from then on; nothing re-signs those entries under a new key.
+
+Behaviour changes worth reading before upgrading:
+
+- **Entries name their epoch.** Every chained entry written at contract 4 records
+  `chain_epoch`. Query by it: `Reeve::Audit::Entry.where(contract_version: 4, chain_epoch: 1)`
+  (on a contract-3 entry the column is outside the digest and means nothing).
+- **A rewritten key id or epoch is now tampering.** An entry whose `chain_key_id` or
+  `chain_epoch` no longer matches the epoch records, and an entry that names an epoch with no
+  record, are reported as BROKEN (exit 1), with the new break kinds `epoch_mismatch` and
+  `epoch_missing`. In 0.6.0 the first of these was UNVERIFIABLE. An epoch record that was
+  edited or renumbered is BROKEN too (`epoch_altered`); so is one deleted while entries name
+  it. An epoch record forged under a key the verifier does not hold reads as UNVERIFIABLE —
+  never INTACT — and deleting the newest epoch before anything was written under it is not
+  detected.
+- **Entries without an epoch are unchanged.** Entries chained before epoch 0, and contract-3
+  entries written by 0.6.0 servers during the deploy, are checked exactly as in 0.6.0: a
+  rewritten key id on one of them still reads as unverifiable. The ledger has no record of
+  which keys signed them, and reeve does not invent one after the fact.
+- **Two rotations with no write between them** open two epochs that begin at the same
+  sequence; the first never signs anything. Not a break.
+- **The unverifiable count includes epoch records.** `unverifiable_count` (and the JSON
+  `totals`) count an epoch record whose key is not configured, as they already counted the
+  genesis.
+- **JSON output** gains `epochs` — an array of `{ "epoch", "key_id", "first_sequence",
+  "entries", "status" }`, `status` one of `verified`, `key_not_configured`, `altered` — and
+  `before_first_epoch`, the integer count of entries chained before epoch 0 (null, like
+  `head_at_start`, when nothing was walked). Each break gains `epoch`. Every existing field is unchanged.
+  The text report is unchanged for a ledger with one verified epoch and nothing before it.
+- **Custom recorders** that call `Reeve::Audit::Chain#append!` need no change: rows at
+  contract 4 are stamped with their epoch; rows passed at contract 3 are chained as before,
+  without one.
+- **A ledger on its own database**: connect `Reeve::Audit::ChainEpoch` the same way as
+  `Reeve::Audit::ChainRecord` (for example with the same `connects_to`). Verification refuses,
+  naming the model, if either reads from another database.
+
+What this adds to the guarantee, and what it does not, is in the README under
+"Tamper-evident, within stated limits". In short: a key the verifier does not hold still
+cannot be checked — epochs make that loss visible and attribute it to a named epoch, they do
+not undo it — and a leaked key, retired or current, can still rewrite what it signed.
+
+### Added
+
+- `bin/rails reeve:rotate_ledger_key` and `Reeve::Audit::Chain.rotate_key!`.
+- Key epochs: `reeve_audit_chain_epochs`, `chain_epoch`, and their verification.
+- The `reeve:upgrade` step to contract 4.
+
 ## [0.6.0] - 2026-10-10
 
 The ledger has been append-only at the library level since 0.1.0: no API updates or deletes

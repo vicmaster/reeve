@@ -44,17 +44,22 @@ module Reeve
       end
 
       # The record is written through the ledger's own connection (Chain::Head) and read
-      # through this model's. A host that moves the ledger to a database of its own and
-      # leaves this model behind would have verification read the wrong record and report
-      # tampering on every run; refusing, with the fix, is the honest answer.
+      # through this model's — and so are the key epochs (ChainEpoch, specs/003 FR-019a). A
+      # host that moves the ledger to a database of its own and leaves either model behind
+      # would have verification read the wrong rows and report tampering on every run;
+      # refusing, with the fix, is the honest answer.
       def self.require_same_database!(entry_class)
         ledger_database = entry_class.connection_db_config.configuration_hash
-        return if connection_db_config.configuration_hash == ledger_database
+        [self, ChainEpoch].each do |model|
+          next if model.connection_db_config.configuration_hash == ledger_database
 
-        raise ConfigurationError,
-              "Reeve::Audit::ChainRecord is connected to a different database than " \
-              "#{entry_class.name}. Connect ChainRecord the same way as the ledger (for " \
-              "example with the same connects_to) so the chain is read where it is written."
+          short = model.name.split("::").last
+          raise ConfigurationError,
+                "#{model.name} is connected to a different database than #{entry_class.name}. " \
+                "Connect ChainRecord and ChainEpoch the same way as the ledger (for example " \
+                "with the same connects_to) so the chain is read where it is written; #{short} " \
+                "is the one that is not."
+        end
       end
     end
   end

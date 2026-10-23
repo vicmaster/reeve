@@ -15,13 +15,28 @@ module Reeve
         # `sequence` is an Integer or a Range (a gap), or nil for a break that has no
         # position; an unchained row has none and is named by `invocation_id` instead.
         # `key_id` is set for unknown_key: the fingerprint of the key the verifier lacked.
-        Break = Struct.new(:kind, :sequence, :detail, :invocation_id, :key_id, keyword_init: true)
+        # `epoch` is set for a break about a key epoch's record (specs/003), whose sequence is nil.
+        Break = Struct.new(:kind, :sequence, :detail, :invocation_id, :key_id, :epoch,
+                           keyword_init: true)
+
+        # One key epoch as verification found it (specs/003 FR-013). `entry_count` counts the
+        # walked rows that named it; `status` is :verified, :key_not_configured or :altered.
+        EpochSummary = Struct.new(:epoch, :key_id, :first_sequence, :entry_count, :status,
+                                  keyword_init: true) do
+          def as_json(*)
+            { "epoch" => epoch, "key_id" => key_id, "first_sequence" => first_sequence,
+              "entries" => entry_count, "status" => status.to_s }
+          end
+        end
+
+        EPOCH_STATUSES = %i[verified key_not_configured altered].freeze
 
         DEFAULT_LIMIT = 100
 
         KINDS = %i[
           digest_mismatch missing duplicate unchained head_mismatch beyond_head
           genesis_altered chain_record_missing unknown_key
+          epoch_missing epoch_mismatch epoch_altered
         ].freeze
 
         # The status rules (data-model), for a verification that had a key and found a
@@ -38,11 +53,11 @@ module Reeve
 
         attr_reader :status, :covered, :breaks, :head_at_start, :head_at_end,
                     :uncovered_now, :uncovered_at_genesis, :unchained_now, :unchained_at_genesis,
-                    :reason
+                    :reason, :epochs, :before_first_epoch
 
         def initialize(status:, covered: nil, breaks: [], head_at_start: nil, head_at_end: nil,
                        uncovered_now: 0, uncovered_at_genesis: nil, unchained_now: 0,
-                       unchained_at_genesis: nil, reason: nil)
+                       unchained_at_genesis: nil, reason: nil, epochs: [], before_first_epoch: nil)
           raise ArgumentError, "unknown status #{status.inspect}" unless STATUSES.include?(status)
 
           @status = status
@@ -55,6 +70,8 @@ module Reeve
           @unchained_now = unchained_now
           @unchained_at_genesis = unchained_at_genesis
           @reason = reason
+          @epochs = epochs.freeze
+          @before_first_epoch = before_first_epoch
           freeze
         end
 
@@ -86,18 +103,22 @@ module Reeve
             "uncovered_now" => uncovered_now, "uncovered_at_genesis" => uncovered_at_genesis,
             "unchained_now" => unchained_now, "unchained_at_genesis" => unchained_at_genesis,
             "unverifiable_count" => unverifiable_count,
-            "totals" => totals.transform_keys(&:to_s), "reason" => reason&.to_s,
-            "breaks" => breaks.map { |b| break_json(b) }
-          }
+            "totals" => totals.transform_keys(&:to_s), "reason" => reason&.to_s
+          }.merge(listing_json)
         end
 
         private
+
+        def listing_json
+          { "breaks" => breaks.map { |b| break_json(b) }, "epochs" => epochs.map(&:as_json),
+            "before_first_epoch" => before_first_epoch }
+        end
 
         def break_json(found)
           {
             "kind" => found.kind.to_s, "sequence" => range_json(found.sequence),
             "detail" => found.detail, "invocation_id" => found.invocation_id,
-            "key_id" => found.key_id
+            "key_id" => found.key_id, "epoch" => found.epoch
           }
         end
 

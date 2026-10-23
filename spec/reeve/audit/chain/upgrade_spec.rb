@@ -12,18 +12,21 @@ RSpec.describe "upgrading a contract-2 ledger to the chain" do
   include Envelope
 
   let(:connection) { ActiveRecord::Base.connection }
-  let(:upgrade_template) do
-    File.expand_path(
-      "../../../../lib/generators/reeve/upgrade/templates/add_ledger_chain_to_reeve_audit_entries.rb.tt",
-      __dir__
-    )
+  # Both steps a 0.5.0 host's upgrade emits: the chain (3), then key epochs (4).
+  let(:upgrade_templates) do
+    %w[add_ledger_chain_to_reeve_audit_entries add_key_epochs_to_reeve_audit_entries].map do |name|
+      File.expand_path("../../../../lib/generators/reeve/upgrade/templates/#{name}.rb.tt", __dir__)
+    end
   end
 
-  # The contract-2 shape: the install template's table, less what contract 3 added.
+  # The contract-2 shape: the install template's table, less what contracts 3 and 4 added.
   def downgrade_to_previous_contract
     connection.remove_index(:reeve_audit_entries, :chain_sequence)
-    %w[chain_sequence chain_key_id chain_digest].each { |c| connection.remove_column(:reeve_audit_entries, c) }
+    %w[chain_sequence chain_key_id chain_digest chain_epoch].each do |column|
+      connection.remove_column(:reeve_audit_entries, column)
+    end
     connection.drop_table(:reeve_audit_chains)
+    connection.drop_table(:reeve_audit_chain_epochs)
     Reeve::Audit::Entry.reset_column_information
   end
 
@@ -38,12 +41,13 @@ RSpec.describe "upgrading a contract-2 ledger to the chain" do
 
   def snapshot
     connection.select_all("SELECT * FROM reeve_audit_entries WHERE contract_version = 2 ORDER BY invocation_id")
-              .to_a.map { |row| row.except("chain_sequence", "chain_key_id", "chain_digest") }
+              .to_a.map { |row| row.except("chain_sequence", "chain_key_id", "chain_digest", "chain_epoch") }
   end
 
   def run_upgrade_migration
-    Object.class_eval(File.read(upgrade_template), upgrade_template)
+    upgrade_templates.each { |template| Object.class_eval(File.read(template), template) }
     AddLedgerChainToReeveAuditEntries.new.migrate(:up)
+    AddKeyEpochsToReeveAuditEntries.new.migrate(:up)
     Reeve::Audit::Entry.reset_column_information
   end
 
@@ -54,10 +58,12 @@ RSpec.describe "upgrading a contract-2 ledger to the chain" do
   end
 
   after do
-    Object.send(:remove_const, :AddLedgerChainToReeveAuditEntries) if
-      Object.const_defined?(:AddLedgerChainToReeveAuditEntries, false)
+    %i[AddLedgerChainToReeveAuditEntries AddKeyEpochsToReeveAuditEntries].each do |name|
+      Object.send(:remove_const, name) if Object.const_defined?(name, false)
+    end
     connection.drop_table(:reeve_audit_entries, if_exists: true)
     connection.drop_table(:reeve_audit_chains, if_exists: true)
+    connection.drop_table(:reeve_audit_chain_epochs, if_exists: true)
     Ledger.prepare!
   end
 

@@ -19,6 +19,8 @@ module Ledger
     "../../../../lib/generators/reeve/install/templates/create_audit_entries.rb.tt", __dir__
   )
 
+  CHAIN_TABLES = %w[reeve_audit_chains reeve_audit_chain_epochs].freeze
+
   class << self
     # The connection is shared with the other ActiveRecord-backed specs; see
     # spec/support/optional/database.rb for why it is one connection and one file.
@@ -63,9 +65,9 @@ module Ledger
     def prepare!
       connect!
       connection = ActiveRecord::Base.connection
-      present = [Reeve::Audit::Entry.table_name, "reeve_audit_chains"].map { |t| connection.table_exists?(t) }
-      unless present.all?
-        %w[reeve_audit_entries reeve_audit_chains].each { |t| connection.drop_table(t, if_exists: true) }
+      present = [Reeve::Audit::Entry.table_name, *CHAIN_TABLES].map { |t| connection.table_exists?(t) }
+      unless present.all? && Reeve::Audit::Entry.column_names.include?("chain_epoch")
+        [Reeve::Audit::Entry.table_name, *CHAIN_TABLES].each { |t| connection.drop_table(t, if_exists: true) }
         migrate_up!
         Reeve::Audit::Entry.reset_column_information
       end
@@ -74,7 +76,7 @@ module Ledger
 
     def clean!
       Reeve::Audit::Entry.delete_all
-      ActiveRecord::Base.connection.delete("DELETE FROM reeve_audit_chains")
+      CHAIN_TABLES.each { |table| ActiveRecord::Base.connection.delete("DELETE FROM #{table}") }
       scratch.delete_all
     end
 
