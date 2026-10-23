@@ -322,10 +322,13 @@ configured key. Verification is INTACT and reports the pre-epoch range separatel
   entries checked), `key_not_configured`, or `altered`. JSON gains an `epochs` array with those
   fields and `before_first_epoch` (the count of chained entries positioned before epoch 0).
   The text report lists one line per epoch after the summary (and totals) whenever there are
-  two or more epochs or any epoch is not `verified`; a ledger with a single verified epoch
-  prints exactly what 0.6.0 printed. *(Amended during planning: a lone verified epoch line
-  tells the reader nothing the summary does not.)* The summary line's format and every
-  existing JSON field are unchanged.
+  two or more epochs, any epoch is not `verified`, or chained rows precede the first epoch
+  (then a "before epoch 0" line comes first, with their count); a ledger with a single
+  verified epoch and nothing before it prints exactly what 0.6.0 printed. *(Amended during
+  planning: a lone verified epoch line tells the reader nothing the summary does not.
+  Amended again during build, re-frozen 2026-10-23: the planning wording dropped the
+  pre-epoch rows US5 scenario 3 requires the report to show.)* The summary line's format and
+  every existing JSON field are unchanged; breaks gain an `epoch` field.
 - **FR-014**: Verification reads the epochs with one query and keeps the walk's per-batch query
   count unchanged.
 
