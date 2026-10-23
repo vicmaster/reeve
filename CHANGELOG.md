@@ -687,6 +687,7 @@ is for:
 - **A change that widens access is breaking by definition** — major version, plus a
   migration note saying exactly what became visible that was not visible before.
 - Adding a nullable ledger column is minor and leaves the audit-entry contract version
-  alone. Removing or renaming a column, or changing what a value means, is major and bumps
-  it.
-- The audit-entry contract version is `3`.
+  alone — unless what its absence means, or what an existing value covers, differs between
+  rows written before and after it, which is major (contracts 3 and 4 are both examples).
+  Removing or renaming a column, or changing what a value means, is major and bumps it.
+- The audit-entry contract version is `4`.
