@@ -4,7 +4,7 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.7.0] - 2026-10-23
 
 0.6.0 let a ledger be verified across a key rotation, provided the old key was kept as a
 retired key. It did not record the rotation itself: nothing in the ledger said which key had
