@@ -74,7 +74,7 @@ RSpec.describe "tampering with a chained ledger" do
 
   it "detects a forged row put in place of a real one" do
     at(5).delete_all
-    entries.insert_all!([row(chain_sequence: 5, chain_key_id: Reeve.config.ledger_key_id,
+    entries.insert_all!([row(chain_sequence: 5, chain_key_id: Reeve.config.ledger_key_id, chain_epoch: 0,
                              chain_digest: "a" * 64, arguments: { "q" => "forged" })])
 
     expect(breaks).to include([:digest_mismatch, 5])

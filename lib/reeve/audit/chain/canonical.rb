@@ -31,19 +31,27 @@ module Reeve
         ENTRY_TAG = "reeve-ledger-entry-v1"
         GENESIS_TAG = "reeve-ledger-genesis-v1"
 
+        EPOCH_TAG = "reeve-ledger-epoch-v1"
+
+        CONTRACT_3_FIELDS = %w[
+          chain_sequence chain_key_id contract_version
+          invocation_id occurred_at agent_id agent_name principal_type principal_id
+          tool_name arguments outcome rule detail record_type record_ids record_count
+          truncated derived guard duration_ms metadata
+        ].freeze
+
+        # Contract 4 (specs/003) adds the key epoch, next to the key it names.
         ENTRY_FIELDS = {
-          3 => %w[
-            chain_sequence chain_key_id contract_version
-            invocation_id occurred_at agent_id agent_name principal_type principal_id
-            tool_name arguments outcome rule detail record_type record_ids record_count
-            truncated derived guard duration_ms metadata
-          ].freeze
+          3 => CONTRACT_3_FIELDS,
+          4 => CONTRACT_3_FIELDS.dup.insert(2, "chain_epoch").freeze
         }.freeze
 
         GENESIS_FIELDS = %w[genesis_at pre_chain_count pre_chain_unchained_count
                             genesis_key_id].freeze
 
-        TIME_FIELDS = %w[occurred_at genesis_at].freeze
+        EPOCH_FIELDS = %w[epoch key_id first_sequence opened_at].freeze
+
+        TIME_FIELDS = %w[occurred_at genesis_at opened_at].freeze
 
         module_function
 
@@ -54,6 +62,13 @@ module Reeve
         def genesis_digest(secret, genesis)
           pairs = GENESIS_FIELDS.map { |field| [field, value(genesis, field)] }
           hmac(secret, GENESIS_TAG, dump(pairs))
+        end
+
+        # An epoch record (specs/003 FR-002), linked to the epoch before it — or, for epoch 0,
+        # to the genesis — so the epochs are a chain of their own.
+        def epoch_digest(secret, epoch, previous_digest:)
+          pairs = EPOCH_FIELDS.map { |field| [field, value(epoch, field)] }
+          hmac(secret, EPOCH_TAG, dump([["previous_digest", previous_digest], *pairs]))
         end
 
         def entry_message_body(row, previous_digest)

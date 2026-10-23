@@ -3,8 +3,8 @@
 require "open3"
 
 # specs/002 T043, T046: with Rails present, `require "reeve"` brings in a Railtie whose only
-# job is to register `reeve:verify_ledger`; without Rails it brings in nothing
-# (spec/load_safety_spec.rb). A clean process, through Bundler, because this suite has
+# job is to register the ledger tasks (`reeve:verify_ledger`, `reeve:rotate_ledger_key`);
+# without Rails it brings in nothing (spec/load_safety_spec.rb). A clean process, through Bundler, because this suite has
 # loaded reeve before Rails and an in-process check would prove the load order of the spec
 # run rather than a host's.
 RSpec.describe "the Railtie" do
@@ -17,7 +17,7 @@ RSpec.describe "the Railtie" do
                     chdir: root)
   end
 
-  it "loads when Rails is present, and registers reeve:verify_ledger and nothing else" do
+  it "loads when Rails is present, and registers the two ledger tasks and nothing else" do
     output, status = run_in_clean_process(<<~RUBY)
       require "rails"
       require "rake"
@@ -29,6 +29,6 @@ RSpec.describe "the Railtie" do
     RUBY
 
     expect(status).to be_success, output
-    expect(output.strip.lines.last).to eq("reeve:verify_ledger")
+    expect(output.strip.lines.last).to eq("reeve:rotate_ledger_key,reeve:verify_ledger")
   end
 end

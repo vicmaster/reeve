@@ -87,7 +87,8 @@ RSpec.describe Reeve::Audit::Chain::Verifier do
   it "starts each batch's index scan where the previous batch stopped" do
     5.times { chain.append!(row) }
     walk = Reeve::Audit::Chain::Walk.new(entry_class: Reeve::Audit::Entry, keyring: keyring,
-                                         batch_size: 2, link: nil, report: ->(*) {})
+                                         batch_size: 2, link: nil, report: ->(*) {},
+                                         epochs: Reeve::Audit::Chain::EpochRules.new([], keyring: keyring))
     batch = walk.send(:batch_scope, [3, Reeve::Audit::Entry.where(chain_sequence: 3).pick(:id)], 5)
     plan = case SpecDatabase.adapter
            when "postgresql" then postgresql_index_plan(batch.to_sql)
@@ -282,7 +283,9 @@ RSpec.describe Reeve::Audit::Chain::Verifier do
       result = call
 
       expect(result.status).to eq(:unverifiable)
-      expect(result.unverifiable_count).to eq(3) # two rows and the genesis they hang from
+      # Two rows, the genesis they hang from, and the record of the epoch the missing key
+      # opened (specs/003): a record nobody could check is counted, never passed over.
+      expect(result.unverifiable_count).to eq(4)
       expect(result.breaks.map(&:kind).uniq).to eq([:unknown_key])
     end
 

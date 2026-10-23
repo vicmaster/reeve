@@ -38,7 +38,12 @@ module Reeve
     class Chain
       TABLE = "reeve_audit_chains"
 
-      COLUMNS = %w[chain_sequence chain_key_id chain_digest].freeze
+      COLUMNS = %w[chain_sequence chain_key_id chain_digest chain_epoch].freeze
+
+      EPOCHS_TABLE = "reeve_audit_chain_epochs"
+
+      # The first contract whose rows name their key epoch.
+      EPOCH_CONTRACT = 4
 
       # A contract-3 row outside the chain: the walk only reads rows with a sequence, so a
       # row without one is counted here or nowhere. Written once and used by both the
@@ -53,6 +58,12 @@ module Reeve
       def self.verify(keys: nil, entry_class: Entry, batch_size: Verifier::BATCH_SIZE)
         keyring = keys ? Keyring.new(signing: nil, retired: keys) : Keyring.from(Reeve.config)
         Verifier.new(entry_class: entry_class, keyring: keyring, batch_size: batch_size).call
+      end
+
+      # Makes the configured ledger key the key of the latest epoch (specs/003 FR-006) and
+      # returns a Rotation saying what happened. `bin/rails reeve:rotate_ledger_key` runs it.
+      def self.rotate_key!(accept_unverifiable: false, entry_class: Entry)
+        new(entry_class: entry_class).rotate_key!(accept_unverifiable: accept_unverifiable)
       end
 
       def initialize(entry_class: Entry, keyring: nil)
@@ -95,6 +106,24 @@ module Reeve
         end
       end
 
+      # Starts the chain if it has not started — the genesis needs the key the epoch will
+      # open with — then decides under the head's lock, so a write and a rotation never
+      # interleave. A refusal writes nothing.
+      def rotate_key!(accept_unverifiable: false)
+        signer = keyring
+        return Rotation.refused(:no_key) unless signer.signing?
+
+        require_columns!
+        with_connection do |connection|
+          head = Head.new(connection: connection, entry_class: entry_class)
+          head.start!(signer)
+          entry_class.transaction(requires_new: true) do
+            Rotation.decide(Epochs.new(connection: connection), signer,
+                            head_sequence: head.lock!, accept_unverifiable: accept_unverifiable)
+          end
+        end
+      end
+
       private
 
       attr_reader :entry_class
@@ -111,10 +140,18 @@ module Reeve
       # column defaults (`truncated: false`) and casts on assignment (an Integer principal_id
       # becomes a String), and the instance is exactly what the database will be given.
       # Digesting the hash a caller passed would sign values that are never stored.
+      #
+      # A row at contract 4 or later names the key epoch its key opened, opening the next one
+      # if the key has none (specs/003 FR-004); a contract-3 row from a custom recorder is
+      # chained exactly as 0.6.0 chained it.
       def link!(head, normalized, signer)
         sequence, previous = head.advance!
-        entry = entry_class.new(normalized.merge(chain_sequence: sequence,
-                                                 chain_key_id: signer.signing_id))
+        chain = { chain_sequence: sequence, chain_key_id: signer.signing_id }
+        if Integer(normalized[:contract_version]) >= EPOCH_CONTRACT
+          chain[:chain_epoch] = Epochs.new(connection: head.connection)
+                                      .for_signing!(signer, sequence: sequence)
+        end
+        entry = entry_class.new(normalized.merge(chain))
         entry.chain_digest = Canonical.entry_digest(signer.signing_secret, entry,
                                                     previous_digest: previous)
         entry.save!
@@ -136,13 +173,7 @@ module Reeve
       # A table one contract behind the gem fails here, naming the fix, rather than as an
       # "unknown attribute" or "no such column" from deep inside the write.
       def require_columns!
-        missing = COLUMNS - entry_class.column_names
-        return if missing.empty?
-
-        raise ConfigurationError,
-              "#{entry_class.table_name} is missing #{missing.join(', ')}: the ledger is at an " \
-              "older audit-entry contract than this reeve writes (#{CONTRACT_VERSION}). Run " \
-              "`bin/rails generate reeve:upgrade` and `bin/rails db:migrate`."
+        (@schema ||= Schema.new(entry_class)).require!
       end
 
       def replayed(normalized)

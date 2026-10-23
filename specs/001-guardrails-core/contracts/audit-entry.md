@@ -3,7 +3,9 @@
 **Stability**: public and **versioned** (FR-015). The entry shape is a compliance artifact;
 downstream exports and SIEM mappings depend on it.
 
-**Contract version**: `3`. Adding a nullable column is a MINOR change. Removing a column,
+**Contract version**: `4`. Adding a nullable column is a MINOR change — unless what its
+absence means, or what an existing value covers, differs between rows written before and
+after it; that is MAJOR, and contracts 3 and 4 are both examples. Removing a column,
 renaming one, or changing the meaning of a value is MAJOR.
 
 Asserted by `Reeve::Checks::ContractVersion`, which compares both the column list and the
@@ -47,6 +49,16 @@ and destroys the record of what was applied.
 
 ### History
 
+- **4** (specs/003) — Key epochs. New nullable column `chain_epoch`, inside the digest; new
+  table `reeve_audit_chain_epochs`, one row per key that has signed the ledger. Additive, but
+  MAJOR by the rule above on both counts: `chain_digest` on a contract-4 row covers the epoch,
+  which a contract-3 digest does not, and a NULL epoch means "chained before key epochs" on a
+  contract-3 row where a chained contract-4 row always has one. Existing rows are not
+  touched; rows chained before the first epoch keep contract-3 verification.
+
+  **For custom recorders**: rows passed to `Reeve::Audit::Chain#append!` at contract 4 are
+  stamped with their epoch automatically; rows passed at contract 3 are chained as before,
+  without one.
 - **3** (specs/002) — Entries are chained. New nullable columns `chain_sequence`,
   `chain_key_id`, `chain_digest`; new table `reeve_audit_chains` holding the genesis and
   the head. Additive, but MAJOR by this document's own rule, because what an absence means
@@ -107,6 +119,11 @@ column-level table. Contractual guarantees on top of it:
    the attacker does not hold the key. It does **not** detect: use of a compromised key;
    removal of the newest rows together with a rewind of the head; deletion of the whole
    ledger; anything about rows written before contract 3.
+10. **Chained entries name their key epoch.** Every contract-4 chained row records, inside
+    its digest, the number of the key epoch whose key signed it. Verification reports a row
+    whose key or epoch does not match the epoch records, and an epoch record that was
+    changed or removed, as tampering. Rows chained before the first epoch keep guarantee 9
+    exactly as it was: a key the verifier lacks leaves them unverifiable.
 
 ## Query interface (FR-013)
 

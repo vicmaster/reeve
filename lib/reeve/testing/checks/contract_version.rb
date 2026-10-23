@@ -46,10 +46,10 @@ module Reeve
           invocation_id occurred_at agent_id agent_name principal_type principal_id
           tool_name arguments outcome rule detail record_type record_ids record_count
           truncated derived guard duration_ms metadata contract_version
-          chain_sequence chain_key_id chain_digest
+          chain_sequence chain_key_id chain_digest chain_epoch
         ].freeze
 
-        EXPECTED_VERSION = 3
+        EXPECTED_VERSION = 4
 
         def initialize(tool: nil, expected: EXPECTED_VERSION, ledger: nil)
           super(tool: tool, ledger: ledger)

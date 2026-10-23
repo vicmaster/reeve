@@ -46,20 +46,26 @@ module Reeve
 
         attr_reader :entry_class, :keyring, :batch_size, :breaks
 
+        # The epochs are read after the head: every row the walk visits committed, with any
+        # epoch it opened, before that read. They are checked against the head read *after*
+        # the walk, which is later than they were read, so an epoch opened by a rotation
+        # during the run is never mistaken for one placed beyond the head.
         def verify_chain(record)
           @breaks = []
-          walk = walk(record)
+          epochs = EpochRules.read(keyring: keyring)
+          walk = walk(record, epochs)
           check_record(record, walk)
           head_at_end = record && read_head
           check_beyond_head(head_at_end || record)
           check_unchained(record)
+          epochs.check!(record, head_at_end || record, report: method(:add))
 
-          result(record, head_at_end, walk.last_sequence)
+          result(record, head_at_end, walk.last_sequence, epochs)
         end
 
-        def walk(record)
+        def walk(record, epochs)
           Walk.new(entry_class: entry_class, keyring: keyring, batch_size: batch_size,
-                   link: record&.genesis_digest, report: method(:add))
+                   link: record&.genesis_digest, report: method(:add), epochs: epochs)
               .call(record&.head_sequence)
         end
 
@@ -121,15 +127,17 @@ module Reeve
           end
         end
 
-        def add(kind, sequence, detail = nil, invocation_id = nil, key_id = nil)
-          breaks << Verification::Break.new(kind: kind, sequence: sequence, detail: detail,
-                                            invocation_id: invocation_id, key_id: key_id)
+        # `epoch` names the key epoch a break is about when it has no sequence (specs/003).
+        def add(kind, sequence, detail = nil, invocation_id = nil, key_id = nil, epoch: nil)
+          found = { kind: kind, sequence: sequence, detail: detail, invocation_id: invocation_id }
+          breaks << Verification::Break.new(**found, key_id: key_id, epoch: epoch)
         end
 
-        def result(record, head_at_end, last_sequence)
+        def result(record, head_at_end, last_sequence, epochs)
           Verification.new(
             status: Verification.status_for(breaks), breaks: breaks,
             covered: covered(record, last_sequence),
+            epochs: epochs.summaries, before_first_epoch: epochs.before_first_epoch,
             head_at_start: record&.head_sequence, head_at_end: head_at_end&.head_sequence,
             uncovered_now: count_uncovered, uncovered_at_genesis: record&.pre_chain_count,
             unchained_now: count_unchained, unchained_at_genesis: record&.pre_chain_unchained_count

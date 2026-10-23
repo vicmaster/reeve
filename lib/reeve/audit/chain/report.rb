@@ -27,10 +27,11 @@ module Reeve
 
         def to_s(limit:)
           listed = @v.breaks.reject { |found| found.kind == :unknown_key }
-          return summary if listed.empty?
+          epochs = EpochLines.new(@v).to_a
+          return [summary, *epochs].join("\n") if listed.empty?
 
           lines = listed.first(limit).map { |found| line_for(found) }
-          [summary, totals, *lines, more(listed, limit)].compact.join("\n")
+          [summary, totals, *epochs, *lines, more(listed, limit)].compact.join("\n")
         end
 
         private
@@ -113,6 +114,7 @@ module Reeve
         def label(found)
           sequence = found.sequence
           return "invocation #{found.invocation_id}" if found.invocation_id
+          return "epoch #{found.epoch}" if sequence.nil? && found.epoch
           return "—" if sequence.nil?
           return "##{range(sequence)}" if sequence.is_a?(Range)
 
@@ -127,6 +129,47 @@ module Reeve
 
         def number(value)
           self.class.number(value.to_i)
+        end
+      end
+
+      # The key epochs, one line each (specs/003 FR-013), shown once they say something the
+      # summary does not: more than one, one that is not verified, or rows chained before the
+      # first. A ledger with one verified epoch and nothing before it reads as 0.6.0's did.
+      class EpochLines
+        STATUS_WORDS = {
+          verified: "verified", key_not_configured: "key not configured", altered: "altered"
+        }.freeze
+
+        def initialize(verification)
+          @epochs = verification.epochs
+          @before = verification.before_first_epoch.to_i
+        end
+
+        def to_a
+          return [] unless shown?
+
+          lines = @epochs.map { |epoch| line(epoch) }
+          return lines unless @before.positive?
+
+          ["  before epoch 0  #{entries(@before)} chained before key epochs began", *lines]
+        end
+
+        private
+
+        def shown?
+          return false if @epochs.empty?
+
+          @epochs.size > 1 || @epochs.first.status != :verified || @before.positive?
+        end
+
+        def line(epoch)
+          "  epoch #{epoch.epoch}  key #{epoch.key_id}  " \
+            "from sequence #{Report.number(epoch.first_sequence)}  " \
+            "#{entries(epoch.entry_count)}  #{STATUS_WORDS.fetch(epoch.status)}"
+        end
+
+        def entries(count)
+          "#{Report.number(count)} #{count == 1 ? 'entry' : 'entries'}"
         end
       end
     end

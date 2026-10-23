@@ -139,7 +139,7 @@ RSpec.describe Reeve::Audit::Chain::Canonical do
       Ledger.prepare!
 
       columns = Reeve::Audit::Entry.column_names - %w[id chain_digest]
-      expect(columns - described_class::ENTRY_FIELDS.fetch(3)).to eq([])
+      expect(columns - described_class::ENTRY_FIELDS.fetch(Reeve::Audit::CONTRACT_VERSION)).to eq([])
     end
 
     it "refuses a contract version it has no field list for" do

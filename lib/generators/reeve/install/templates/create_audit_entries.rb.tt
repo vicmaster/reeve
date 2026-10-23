@@ -16,8 +16,12 @@
 #   -- the chain record: its head moves on every write
 #   GRANT INSERT, SELECT, UPDATE ON reeve_audit_chains TO app_role;
 #   GRANT USAGE  ON SEQUENCE reeve_audit_chains_id_seq TO app_role;
+#   -- the key epochs: written once each, never updated
+#   GRANT INSERT, SELECT ON reeve_audit_chain_epochs TO app_role;
+#   GRANT USAGE  ON SEQUENCE reeve_audit_chain_epochs_id_seq TO app_role;
 #
-# Every row is chained to the one before it with a keyed digest (audit-entry contract 3),
+# Every row is chained to the one before it with a keyed digest, and names the key epoch
+# that signed it (audit-entry contract 4),
 # so a row changed, removed or reordered outside reeve is reported by
 # `bin/rails reeve:verify_ledger`. That is tamper-evidence, not tamper-proofing: it
 # detects a change after the fact and prevents nothing — the grant above is what
@@ -79,6 +83,10 @@ class CreateReeveAuditEntries < ActiveRecord::Migration[7.0]
       t.bigint   :chain_sequence
       t.string   :chain_key_id,   limit: 16
       t.string   :chain_digest,   limit: 64
+
+      # The key epoch whose key signed the row (contract 4), inside the digest. Nullable for
+      # the same reason as the chain columns, and NULL on an unchained row.
+      t.integer  :chain_epoch
     end
 
     add_index :reeve_audit_entries, :invocation_id, unique: true
@@ -111,5 +119,19 @@ class CreateReeveAuditEntries < ActiveRecord::Migration[7.0]
     end
 
     add_index :reeve_audit_chains, :name, unique: true
+
+    # One row per key that has signed the ledger (contract 4): written when the key first
+    # signs, or by `bin/rails reeve:rotate_ledger_key`, and never updated. A key opens one
+    # epoch only, hence the unique key_id.
+    create_table :reeve_audit_chain_epochs do |t|
+      t.integer  :epoch,          null: false
+      t.string   :key_id,         null: false, limit: 16
+      t.bigint   :first_sequence, null: false
+      t.datetime :opened_at,      null: false, precision: 6
+      t.string   :epoch_digest,   null: false, limit: 64
+    end
+
+    add_index :reeve_audit_chain_epochs, :epoch, unique: true
+    add_index :reeve_audit_chain_epochs, :key_id, unique: true
   end
 end

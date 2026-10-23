@@ -20,11 +20,13 @@ module Reeve
 
         # `link` is the digest the first row must link to (the genesis), or nil when there
         # is no chain record to take it from. `report` receives (kind, sequence, detail).
-        def initialize(entry_class:, keyring:, batch_size:, link:, report:)
+        # `epochs` is the EpochRules the rows are checked against (specs/003 FR-011).
+        def initialize(entry_class:, keyring:, batch_size:, link:, report:, epochs:)
           @entry_class = entry_class
           @keyring = keyring
           @batch_size = batch_size
           @report = report
+          @epochs = epochs
           @expected = 1
           @last_sequence = 0
           @link = link
@@ -39,7 +41,7 @@ module Reeve
 
         private
 
-        attr_reader :entry_class, :keyring, :batch_size
+        attr_reader :entry_class, :keyring, :batch_size, :epochs
 
         def visit(entry)
           sequence = entry.chain_sequence
@@ -71,6 +73,10 @@ module Reeve
         end
 
         def verify(entry, previous)
+          # A row whose key or epoch contradicts the epoch records is a break on its own; its
+          # digest would only repeat it.
+          return if epoch_break?(entry)
+
           # With no chain record there is no genesis for the first row to link to. That is
           # reported once, as chain_record_missing, not again here as a mismatch.
           return if !@verify_first_link && entry.chain_sequence == 1
@@ -86,6 +92,14 @@ module Reeve
           @report.call(:digest_mismatch, sequence, MISMATCH) unless expected == entry.chain_digest
         rescue ArgumentError => e
           @report.call(:digest_mismatch, entry.chain_sequence, e.message)
+        end
+
+        def epoch_break?(entry)
+          kind, detail = epochs.judge(entry)
+          return false unless kind
+
+          @report.call(kind, entry.chain_sequence, detail)
+          true
         end
 
         def each_chained(limit, &block)

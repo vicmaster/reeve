@@ -62,14 +62,30 @@ module Reeve
           [Integer(head["head_sequence"]), head["head_digest"]]
         end
 
+        # Takes the head's lock without consuming a sequence (specs/003 FR-008) and returns the
+        # head: a rotation queues at the same point as a write, so the epoch it opens begins
+        # exactly one past the last row any writer committed. A write that changes nothing
+        # still takes the row lock on PostgreSQL and MySQL and the write lock on SQLite.
+        def lock!
+          updated = connection.update("UPDATE #{TABLE} SET head_sequence = head_sequence " \
+                                      "WHERE #{named}")
+          raise ActiveRecord::StatementInvalid, "the ledger chain record vanished" if updated.zero?
+
+          Integer(connection.select_value("SELECT head_sequence FROM #{TABLE} WHERE #{named}"))
+        end
+
         def point_at!(digest)
           connection.update("UPDATE #{TABLE} SET head_digest = #{connection.quote(digest)} " \
                             "WHERE #{named}")
         end
 
+        # The connection this append runs on; Epochs uses it so the epoch an append opens
+        # commits or rolls back with the append.
+        attr_reader :connection
+
         private
 
-        attr_reader :connection, :entry_class
+        attr_reader :entry_class
 
         def increment
           connection.update("UPDATE #{TABLE} SET head_sequence = head_sequence + 1 WHERE #{named}")
