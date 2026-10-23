@@ -37,12 +37,21 @@ and signs as a straggler under its own earlier epoch otherwise (FR-005).
 Break kinds added (all BROKEN, exit 1): `epoch_missing`, `epoch_mismatch`, `epoch_altered`.
 Rules: spec.md FR-010, FR-011.
 
-Text report: after the existing summary (and totals), when there are two or more epochs or any
-epoch is not verified, one line per epoch:
+Text report: after the existing summary (and totals), when there are two or more epochs, any
+epoch is not verified, or entries were chained before epoch 0 (then a `before epoch 0` line
+comes first), one line per epoch:
 
 ```
   epoch 0  key 9bc1d2e3f4a5b6c7  from sequence 1      4,999 entries  verified
   epoch 1  key 3fa4b5c6d7e8f901  from sequence 5,001    120 entries  key not configured
 ```
 
-JSON: `epochs` (array) and `before_first_epoch` (integer) added; every existing key unchanged.
+JSON: `epochs` (array) and `before_first_epoch` (integer, or null when nothing was walked)
+added; each break gains `epoch`; every existing key unchanged.
+
+Rules as shipped (spec.md, re-frozen during verification): epoch starts are non-decreasing;
+contract-3 entries are checked as in 0.6.0 wherever they sit; epoch records are read only
+from the ledger's database (`ChainEpoch` guarded like `ChainRecord`); a ledger without the
+epochs table verifies with no epochs. On a ROTATED result with `ACCEPT_UNVERIFIABLE=1`, the
+first line names the previous epoch without claiming it stays verifiable, and the
+`warning: ` line says it does not.

@@ -99,8 +99,12 @@ specs/003-ledger-key-epochs/
 lib/reeve/audit.rb                          CONTRACT_VERSION 4 + rule comment
 lib/reeve/audit/chain.rb                    append! epoch step, rotate_key!, COLUMNS, require_columns!
 lib/reeve/audit/chain/canonical.rb          ENTRY_FIELDS[4], epoch digest
-lib/reeve/audit/chain/epochs.rb             NEW: reading/opening epoch records, EpochIndex
+lib/reeve/audit/chain/epochs.rb             NEW: reading/opening epoch records (write side)
+lib/reeve/audit/chain/epoch_rules.rb        NEW: EpochRules (per-row, FR-011), EpochCheck (records, FR-010)
+lib/reeve/audit/chain/schema.rb             NEW: column guard; epochs table diagnosed on failure only
+lib/reeve/audit/chain_epoch.rb              NEW: read-only model for verification
 lib/reeve/audit/chain/rotation.rb           NEW: Rotation value + text
+lib/generators/reeve/upgrade/upgrade_notes.rb  NEW: per-contract post-upgrade notes
 lib/reeve/audit/chain/head.rb               lock! (no-consume lock)
 lib/reeve/audit/chain/walk.rb               epoch rules per row
 lib/reeve/audit/chain/verifier.rb           load + check epochs
