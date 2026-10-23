@@ -8,16 +8,21 @@ module Reeve
       # the rows chained before the first, for the report.
       #
       # A row at contract 4 names its epoch, and must carry that epoch's key and not precede
-      # its start. A contract-3 row names none: before the first epoch it is checked exactly
-      # as 0.6.0 checked it; after, a key the verifier holds lets the row's digest speak for
-      # it, and a key it lacks must at least be one some epoch had opened by then — anything
-      # else is a key id nobody issued.
+      # its start. A contract-3 row names none and is checked exactly as 0.6.0 checked it,
+      # wherever it sits: one written by a 0.6.0 server after the first epoch opened may carry
+      # any key that server had, and a verifier without that key cannot tell it from a
+      # rewritten one — calling it tampered would report a rolling deploy as an attack.
       class EpochRules
         attr_reader :records, :counts, :before_first_epoch, :summaries
 
-        # Every epoch record, in one query whatever the ledger's size (FR-014).
-        def self.read(keyring:)
-          new(ChainEpoch.uncached { ChainEpoch.all.to_a }, keyring: keyring)
+        # Every epoch record, in one query whatever the ledger's size (FR-014). A ledger whose
+        # gem was upgraded before its table was migrated has none — and no row that could
+        # name one, since writes refuse until it is migrated (FR-018).
+        def self.read(keyring:, entry_class:)
+          present = entry_class.connection_pool.with_connection do |connection|
+            connection.table_exists?(EPOCHS_TABLE)
+          end
+          new(present ? ChainEpoch.uncached { ChainEpoch.all.to_a } : [], keyring: keyring)
         end
 
         # `records` are ChainEpoch rows, in any order.
@@ -40,14 +45,10 @@ module Reeve
 
         # [kind, detail] for a row that contradicts the epoch records, or nil.
         def judge(entry)
-          if Integer(entry.contract_version) >= EPOCH_CONTRACT
-            epoch_bearing(entry)
-          elsif before_first?(entry.chain_sequence)
-            @before_first_epoch += 1
-            nil
-          else
-            unepoched(entry)
-          end
+          return epoch_bearing(entry) if entry.contract_version.to_i >= EPOCH_CONTRACT
+
+          @before_first_epoch += 1 if before_first?(entry.chain_sequence)
+          nil
         end
 
         private
@@ -69,21 +70,9 @@ module Reeve
           end
         end
 
-        def unepoched(entry)
-          key_id = entry.chain_key_id
-          return nil if keyring.for(key_id) || opened_by?(key_id, entry.chain_sequence)
-
-          [:epoch_mismatch,
-           "signed by key #{key_id}, which no key epoch had opened by this position"]
-        end
-
         # True for a row chained before any epoch began — and for every row when none has.
         def before_first?(sequence)
           @first_start.nil? || sequence < @first_start
-        end
-
-        def opened_by?(key_id, sequence)
-          @records.any? { |record| record.key_id == key_id && record.first_sequence <= sequence }
         end
 
         def missing(number)
@@ -92,7 +81,8 @@ module Reeve
       end
 
       # The epoch records themselves (specs/003 FR-010): numbered 0..n, each beginning after
-      # the one before and no later than one past the head, one key each, and each matching
+      # the one before (or with it: two rotations with no write between them begin at the same
+      # sequence) and no later than one past the head, one key each, and each matching
       # its digest — which links it to the epoch before, or, for epoch 0, to the genesis. A
       # record whose key is not configured cannot be checked, and that is said, never passed
       # over. Returns one Verification::EpochSummary per record; breaks go to `report`, as
@@ -141,8 +131,8 @@ module Reeve
 
         def out_of_place(epoch, previous, head)
           name = "epoch #{epoch.epoch}"
-          if epoch.epoch.positive? && epoch.first_sequence <= previous[:first_sequence]
-            "#{name} begins at sequence #{epoch.first_sequence}, not after the epoch before it"
+          if epoch.epoch.positive? && epoch.first_sequence < previous[:first_sequence]
+            "#{name} begins at sequence #{epoch.first_sequence}, before the epoch before it"
           elsif head && epoch.first_sequence > head.head_sequence + 1
             "#{name} begins at sequence #{epoch.first_sequence}, past the head"
           elsif previous[:keys].include?(epoch.key_id)

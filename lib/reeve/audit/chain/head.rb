@@ -18,6 +18,17 @@ module Reeve
       # engines: SQLite cannot upgrade a read lock while another writer waits, and ignores
       # SELECT ... FOR UPDATE.
       class Head
+        LOCKING_READ_ADAPTERS = /mysql|trilogy/i
+
+        # A read made under the head's lock must see the latest committed rows. PostgreSQL
+        # and SQLite read them anyway; InnoDB at REPEATABLE READ serves a plain SELECT from
+        # the snapshot of the caller's transaction, which a writer that committed while this
+        # one queued for the lock is not in (code review, specs/003). A locking read is
+        # current; LOCK IN SHARE MODE is the spelling every MySQL version accepts.
+        def self.current(connection, sql)
+          connection.adapter_name.match?(LOCKING_READ_ADAPTERS) ? "#{sql} LOCK IN SHARE MODE" : sql
+        end
+
         def initialize(connection:, entry_class:)
           @connection = connection
           @entry_class = entry_class
@@ -71,7 +82,8 @@ module Reeve
                                       "WHERE #{named}")
           raise ActiveRecord::StatementInvalid, "the ledger chain record vanished" if updated.zero?
 
-          Integer(connection.select_value("SELECT head_sequence FROM #{TABLE} WHERE #{named}"))
+          sql = "SELECT head_sequence FROM #{TABLE} WHERE #{named}"
+          Integer(connection.select_value(Head.current(connection, sql)))
         end
 
         def point_at!(digest)

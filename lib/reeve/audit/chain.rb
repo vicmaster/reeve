@@ -88,7 +88,9 @@ module Reeve
           insert_once(normalized) do
             head = Head.new(connection: connection, entry_class: entry_class)
             head.start!(signer)
-            entry_class.transaction(requires_new: true) { link!(head, normalized, signer) }
+            schema.explaining do
+              entry_class.transaction(requires_new: true) { link!(head, normalized, signer) }
+            end
           end
         end
       end
@@ -117,9 +119,11 @@ module Reeve
         with_connection do |connection|
           head = Head.new(connection: connection, entry_class: entry_class)
           head.start!(signer)
-          entry_class.transaction(requires_new: true) do
-            Rotation.decide(Epochs.new(connection: connection), signer,
-                            head_sequence: head.lock!, accept_unverifiable: accept_unverifiable)
+          schema.explaining do
+            entry_class.transaction(requires_new: true) do
+              Rotation.decide(Epochs.new(connection: connection), signer,
+                              head_sequence: head.lock!, accept_unverifiable: accept_unverifiable)
+            end
           end
         end
       end
@@ -146,8 +150,8 @@ module Reeve
       # chained exactly as 0.6.0 chained it.
       def link!(head, normalized, signer)
         sequence, previous = head.advance!
-        chain = { chain_sequence: sequence, chain_key_id: signer.signing_id }
-        if Integer(normalized[:contract_version]) >= EPOCH_CONTRACT
+        chain = { chain_sequence: sequence, chain_key_id: signer.signing_id, chain_epoch: nil }
+        if normalized[:contract_version].to_i >= EPOCH_CONTRACT
           chain[:chain_epoch] = Epochs.new(connection: head.connection)
                                       .for_signing!(signer, sequence: sequence)
         end
@@ -173,7 +177,11 @@ module Reeve
       # A table one contract behind the gem fails here, naming the fix, rather than as an
       # "unknown attribute" or "no such column" from deep inside the write.
       def require_columns!
-        (@schema ||= Schema.new(entry_class)).require!
+        schema.require_columns!
+      end
+
+      def schema
+        @schema ||= Schema.new(entry_class)
       end
 
       def replayed(normalized)

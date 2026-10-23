@@ -23,7 +23,7 @@ module Reeve
         BATCH_SIZE = 1_000
 
         RECORD_MISSING = "chained rows exist but the chain record does not"
-        UNCHAINED_ROW = "a contract-3 row outside the chain, written after it started (by clock)"
+        UNCHAINED_ROW = "a contract-3+ row outside the chain, written after it started (by clock)"
 
         def initialize(entry_class:, keyring:, batch_size: BATCH_SIZE)
           @entry_class = entry_class
@@ -52,7 +52,7 @@ module Reeve
         # during the run is never mistaken for one placed beyond the head.
         def verify_chain(record)
           @breaks = []
-          epochs = EpochRules.read(keyring: keyring)
+          epochs = EpochRules.read(keyring: keyring, entry_class: entry_class)
           walk = walk(record, epochs)
           check_record(record, walk)
           head_at_end = record && read_head

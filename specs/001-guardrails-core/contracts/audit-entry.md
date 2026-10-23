@@ -122,7 +122,7 @@ column-level table. Contractual guarantees on top of it:
 10. **Chained entries name their key epoch.** Every contract-4 chained row records, inside
     its digest, the number of the key epoch whose key signed it. Verification reports a row
     whose key or epoch does not match the epoch records, and an epoch record that was
-    changed or removed, as tampering. Rows chained before the first epoch keep guarantee 9
+    changed, or removed while entries name it, as tampering. Rows chained before the first epoch keep guarantee 9
     exactly as it was: a key the verifier lacks leaves them unverifiable.
 
 ## Query interface (FR-013)

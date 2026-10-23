@@ -270,7 +270,8 @@ recorded unchained instead, logged each time, and reported by verification.
 - the newest rows removed while the chain record was left alone;
 - the chain record removed while chained rows remain;
 - an entry whose key id or key epoch was changed, or that names an epoch with no record, and
-  an epoch record that was changed, removed or forged.
+  an epoch record that was changed, or removed while entries name it (one forged under a key
+  you do not hold reads as unverifiable, never intact).
 
 **Not detected** — stated plainly, because these are the limits of the guarantee:
 
@@ -281,9 +282,9 @@ recorded unchained instead, logged each time, and reported by verification.
 3. **The whole ledger deleted, chain record included.** Reported as *no chain*, never as a
    pass — but indistinguishable from a ledger that was never chained.
 4. **Rows written before you upgraded.** They are counted as "not covered" and are exactly
-   as trustworthy as they were before. Likewise, entries chained before key epochs existed
-   (by 0.6.0) are checked as 0.6.0 checked them: a rewritten key id on one of them reads as
-   unverifiable, not as tampering.
+   as trustworthy as they were before. Likewise, entries without a key epoch — chained by
+   0.6.0, before or during the upgrade — are checked as 0.6.0 checked them: a rewritten key id
+   on one of them reads as unverifiable, not as tampering.
 5. **A key you no longer hold.** Entries it signed cannot be checked, by anyone. Epochs make
    that visible and name the epoch; they do not undo it.
 
@@ -309,8 +310,8 @@ same door the built-in ones use, or verification reports them as unchained:
 Reeve::Audit::Chain.new(entry_class: Reeve::Audit::Entry).append!(row)
 ```
 
-**Upgrading from 0.6.0:** `bin/rails generate reeve:upgrade && bin/rails db:migrate`, and
-grant `INSERT, SELECT` on `reeve_audit_chain_epochs`. The next guarded call opens epoch 0;
+**Upgrading from 0.6.0:** `bin/rails generate reeve:upgrade && bin/rails db:migrate` before
+the new code serves traffic, and grant `INSERT, SELECT` on `reeve_audit_chain_epochs`. The next guarded call opens epoch 0;
 earlier entries are listed as "before epoch 0" and checked as before.
 
 **Upgrading from 0.5.0:**

@@ -99,6 +99,9 @@ module Reeve
                  "#{Report.number(first_sequence)}"
           return text if previous_epoch.nil?
 
+          previous = "epoch #{previous_epoch} (key #{previous_key_id})"
+          return "#{text}; the previous epoch was #{previous}" if warnings.any?
+
           "#{text}; epoch #{previous_epoch} (key #{previous_key_id}) stays verifiable while " \
             "that key is in retired_ledger_keys"
         end

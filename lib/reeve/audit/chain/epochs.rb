@@ -25,15 +25,15 @@ module Reeve
         end
 
         def number_for(key_id)
-          value = connection.select_value("SELECT epoch FROM #{EPOCHS_TABLE} " \
-                                          "WHERE key_id = #{connection.quote(key_id)}")
+          sql = "SELECT epoch FROM #{EPOCHS_TABLE} WHERE key_id = #{connection.quote(key_id)}"
+          value = connection.select_value(current(sql))
           value.nil? ? nil : Integer(value)
         end
 
         # Every epoch, oldest first, as hashes with symbol keys.
         def all
-          connection.select_all("SELECT epoch, key_id, first_sequence FROM #{EPOCHS_TABLE} " \
-                                "ORDER BY epoch")
+          sql = "SELECT epoch, key_id, first_sequence FROM #{EPOCHS_TABLE} ORDER BY epoch"
+          connection.select_all(current(sql))
                     .map do |row|
                       { epoch: Integer(row["epoch"]), key_id: row["key_id"],
                         first_sequence: Integer(row["first_sequence"]) }
@@ -44,8 +44,8 @@ module Reeve
         # latest epoch's digest, or to the genesis for epoch 0, so the chain must have
         # started.
         def open!(signer, first_sequence:)
-          latest = connection.select_one("SELECT epoch, epoch_digest FROM #{EPOCHS_TABLE} " \
-                                         "ORDER BY epoch DESC LIMIT 1")
+          sql = "SELECT epoch, epoch_digest FROM #{EPOCHS_TABLE} ORDER BY epoch DESC LIMIT 1"
+          latest = connection.select_one(current(sql))
           epoch = { epoch: latest ? Integer(latest["epoch"]) + 1 : 0, key_id: signer.signing_id,
                     first_sequence: first_sequence, opened_at: Time.now.utc.floor(6) }
           previous = latest ? latest["epoch_digest"] : genesis_digest
@@ -56,6 +56,10 @@ module Reeve
         private
 
         attr_reader :connection
+
+        def current(sql)
+          Head.current(connection, sql)
+        end
 
         def insert(values)
           quoted = values.values.map { |value| connection.quote(value) }
