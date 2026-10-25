@@ -15,8 +15,11 @@ recorded in the retention record (`archive_sha256`).
 ```
 
 `through_checkpoint` is the boundary checkpoint's line, verbatim (contracts/checkpoint-v1.md of
-specs/004). `start` is the genesis for purge 0, or `{"checkpoint": "<previous boundary checkpoint
-line>"}` for later purges.
+specs/004). `start` is the genesis for purge 0, or `{"through_sequence": p, "through_digest": d}`
+(the previous boundary) for later purges. That digest needs no signature of its own: the first
+row's digest is an HMAC over it, so a changed start fails at the first row. *(Changed during
+build: the first draft carried the previous checkpoint's line, which added nothing the first
+row's digest does not already bind.)*
 
 ## Lines 2…: rows
 
@@ -27,7 +30,7 @@ then chained rows in sequence order.
 ## Verifying
 
 1. The header parses and names this format.
-2. `through_checkpoint` (and, for later purges, the start checkpoint) verify under a held key.
+2. `through_checkpoint` verifies under a held key.
 3. For purge 0, the genesis digest recomputes under its key from the header's genesis fields.
 4. Each chained row, rebuilt as an unsaved entry, recomputes its digest against the previous
    row's recorded digest, starting from the start link; sequences run `from_sequence` to

@@ -351,6 +351,122 @@ def test_anchors_the_ledger
 end
 ```
 
+**Purging old entries.** The ledger grows until you purge it. Deleting rows by hand breaks
+the chain and is reported as tampering, so reeve purges for you: the oldest entries, up to a
+checkpoint your anchor holds, after verifying the whole ledger INTACT, leaving a signed
+*retention record* so the rest still verifies and the purge reads as a purge. It also removes
+rows written before the chain began, and nothing else. It stops at a checkpoint, so with
+`OLDER_THAN=365d` a few entries just over a year old can remain until the next run.
+
+*Setting it up, once.* Run `bin/rails generate reeve:upgrade && bin/rails db:migrate` (it adds
+`reeve_audit_retentions`), then create a database role only the purge uses; the application's
+role never gains `DELETE`. On PostgreSQL (the migration's header shows the same grants):
+
+```sql
+CREATE ROLE reeve_retention LOGIN PASSWORD '…';
+GRANT SELECT ON reeve_audit_entries, reeve_audit_chains, reeve_audit_chain_epochs,
+                reeve_audit_retentions TO reeve_retention;
+GRANT DELETE ON reeve_audit_entries TO reeve_retention;
+GRANT INSERT ON reeve_audit_retentions TO reeve_retention;
+GRANT USAGE  ON SEQUENCE reeve_audit_retentions_id_seq TO reeve_retention;
+GRANT SELECT ON reeve_audit_retentions TO app_role;   -- the application only reads it
+```
+
+Add the role to `config/database.yml` as a second database entry pointing at the same
+database, and a class that connects through it:
+
+```yaml
+production:
+  primary:
+    <<: *default
+    database: app_production
+  ledger_retention:
+    <<: *default
+    database: app_production          # the same database
+    username: reeve_retention
+    password: <%= ENV["REEVE_RETENTION_PASSWORD"] %>
+    database_tasks: false             # never migrated through this entry
+```
+
+```ruby
+# app/models/ledger_retention_record.rb
+class LedgerRetentionRecord < ActiveRecord::Base
+  self.abstract_class = true
+  connects_to database: { writing: :ledger_retention }
+end
+
+# config/initializers/reeve.rb, after require "reeve/audit"
+Reeve.config.ledger_retention_connection = LedgerRetentionRecord
+```
+
+The purge refuses a connection to another database, or one that logs in as the application's
+own user. On SQLite, which has no roles, it can only warn. The task needs the ledger key, as
+every chain task does.
+
+*Running it.* Monthly, from one host, a dry run first (no `CONFIRM`), then the purge. The
+archive path must be new each run: an existing archive is never overwritten.
+
+```bash
+bin/rails reeve:purge_ledger OLDER_THAN=365d ARCHIVE=/mnt/archive/ledger-2026-10.jsonl            # dry run
+bin/rails reeve:purge_ledger OLDER_THAN=365d ARCHIVE=/mnt/archive/ledger-2026-10.jsonl CONFIRM=1
+```
+
+```text
+reeve ledger purge: WOULD PURGE — sequences 1–6,000 through checkpoint #6,000 (2025-10-01 14:00 UTC): 6,000 chained entries and 5,000 pre-chain rows; archive to /mnt/archive/ledger-2026-10.jsonl; run again with CONFIRM=1
+```
+
+In crontab, escape the date's `%`: `ledger-$(date +\%Y-\%m).jsonl`. `THROUGH=6000` names a
+checkpoint's sequence instead of an age. Exactly one of `ARCHIVE=path` and `NO_ARCHIVE=1` is
+required; with neither the task refuses, with both it raises. Exit `0` covers a dry run, a
+purge, and nothing old enough (the first line says which: `WOULD PURGE`, `PURGED`, `NOTHING TO
+PURGE`); exit `1` is a refusal, which removes nothing and names the fix:
+
+| Refusal says | Fix |
+|---|---|
+| no anchor configured | set `config.ledger_anchor` and schedule checkpoints (above) |
+| no retention connection / another database / the application's own database user | `config.ledger_retention_connection` and the role above |
+| the ledger does not verify intact | read `bin/rails reeve:verify_ledger`; nothing is purged while anything is broken or unverifiable |
+| no checkpoint the anchor holds is at that sequence | use one of the two it names, or `OLDER_THAN` |
+| the archive … already exists, or cannot be written | a new path, in a directory the task can write |
+
+Any other failure (a lost connection, a full disk) raises, exit `1` from Rake, like any task.
+
+*If it stops midway.* The archive is written in full and the retention record committed
+before any row is deleted. If the host dies during the deletes, verification reads INTACT,
+exit `0`, with `; 120 entries awaiting purge` beside the purged range, which is not a break.
+Run the purge again, the same command or any other: it first finishes the interrupted purge
+(`PURGED — … (resumed; 120 rows removed this run)`), whatever boundary the new run names, and
+skips the archive, which already exists. Run it once more to purge further.
+
+*The archive.* Every purged row with every column, so the range can be checked without the
+ledger's rows:
+
+```bash
+bin/rails reeve:verify_archive ARCHIVE=/mnt/archive/ledger-2026-10.jsonl   # reeve archive: INTACT — sequences 1–6,000 verified, …
+```
+
+It runs inside the application (it needs the entries table's columns, from any database with
+the schema, not the purged rows), with the keys that signed the archived rows configured as
+`ledger_key` or `retired_ledger_keys`; the anchor is not needed. Each archive covers the range
+its purge removed, named in its first line, so name files by the month they were made. Keep
+archives where they cannot be changed, as you do the anchor. `NO_ARCHIVE=1` deletes without
+one, for data you must not keep; the record and the output then say no archive was written.
+
+*Keys.* Keep every key you ever signed with. A purge removes entries, not epoch records or
+retention records, and verification still checks those under their own keys; archives need
+the keys of the rows they hold.
+
+After a purge, every summary line names what was purged before its coverage; with
+`FORMAT=json`, `retention` and `awaiting_purge` hold the same:
+
+```text
+reeve ledger: INTACT — sequences 6,001–10,000 verified (head at start: 10,000); 1–6,000 purged (retention record 0, 2026-10-25); 0 earlier entries not covered (5,000 when the chain started, 5,000 purged); anchored at #10,000 (checkpoint 2026-10-25 14:00 UTC), 0 entries after it
+```
+
+Checkpoints older than the boundary read as purged. Deleting entries a retention record does
+not cover, or editing or deleting a record, is BROKEN (`retention_altered` or `missing`), as
+before.
+
 A dedicated key decouples the two: `config.ledger_key = Rails.application.credentials.reeve_ledger_key`.
 Keys must be at least 32 bytes and are only ever printed as 16-character fingerprints.
 Without a key, every guarded call fails closed; under `audit_failure_mode = :warn` it is
@@ -388,6 +504,10 @@ recorded unchained instead, logged each time, and reported by verification.
    on one of them reads as unverifiable, not as tampering.
 5. **A key you no longer hold.** Entries it signed cannot be checked, by anyone. Epochs make
    that visible and name the epoch; they do not undo it.
+6. **What a purge removed.** Without an archive, nobody can read it again; the retention record
+   proves only that it existed, verified, and was removed on purpose. A row edited inside the
+   range while the purge runs is not reported by the ledger, since it is being removed; the
+   archive holds what was read.
 
 And it prevents nothing: it detects a change after the fact. The `GRANT INSERT, SELECT` in
 the generated migration is what prevents one. The chain record needs `UPDATE` as well,
@@ -411,10 +531,11 @@ same door the built-in ones use, or verification reports them as unchained:
 Reeve::Audit::Chain.new(entry_class: Reeve::Audit::Entry).append!(row)
 ```
 
-**Upgrading from 0.7.0:** no migration and nothing to configure; anchoring is opt-in. Every
-summary line now ends with its anchoring (`; not anchored` until you set one up), so anything
-that matches the whole text line should read `FORMAT=json` instead, whose existing keys are
-unchanged.
+**Upgrading from 0.7.0:** `bin/rails generate reeve:upgrade && bin/rails db:migrate` adds
+`reeve_audit_retentions`; grant the application's role `SELECT` on it. Nothing is purged until
+you run the task, and anchoring is opt-in. Every summary line now ends with its anchoring
+(`; not anchored` until you set one up), so anything that matches the whole text line should
+read `FORMAT=json` instead, whose existing keys are unchanged.
 
 **Upgrading from 0.6.0:** `bin/rails generate reeve:upgrade && bin/rails db:migrate` before
 the new code serves traffic, and grant `INSERT, SELECT` on `reeve_audit_chain_epochs`. The next guarded call opens epoch 0;
