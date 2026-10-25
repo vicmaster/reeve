@@ -275,7 +275,7 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
     end
   end
 
-  # specs/005 T003: the upgrade a 0.7.0 or 0.8.0 host makes. A table and no column, so the
+  # specs/005 T003: the upgrade a 0.7.0 host makes. A table and no column, so the
   # contract stays 4.
   describe "on a contract-4 ledger without the retention table" do
     before do
