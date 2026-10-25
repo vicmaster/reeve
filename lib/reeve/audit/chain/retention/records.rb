@@ -14,7 +14,7 @@ module Reeve
             present = entry_class.connection_pool.with_connection do |connection|
               connection.table_exists?(RetentionRecord.table_name)
             end
-            present ? RetentionRecord.uncached { RetentionRecord.order(:purge).to_a } : []
+            present ? RetentionRecord.uncached { RetentionRecord.order(:purge_number).to_a } : []
           end
         end
       end

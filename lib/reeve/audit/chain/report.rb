@@ -209,7 +209,7 @@ module Reeve
           return "" if boundary.nil?
 
           text = "1–#{Report.number(boundary.through_sequence)} purged (retention record " \
-                 "#{boundary.purge}, #{boundary.purged_at.utc.strftime('%Y-%m-%d')}); "
+                 "#{boundary.purge_number}, #{boundary.purged_at.utc.strftime('%Y-%m-%d')}); "
           text += "#{Report.number(@awaiting)} entries awaiting purge; " if @awaiting.positive?
           text
         end

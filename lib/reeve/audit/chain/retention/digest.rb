@@ -11,7 +11,7 @@ module Reeve
           TAG = "reeve-ledger-retention-v1"
 
           FIELDS = %w[
-            purge through_sequence through_digest previous_through removed_chained
+            purge_number through_sequence through_digest previous_through removed_chained
             removed_pre_chain archived archive_sha256 purged_at key_id
           ].freeze
 

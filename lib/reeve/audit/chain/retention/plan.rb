@@ -68,7 +68,7 @@ module Reeve
 
           def record_values(archive_sha256, key_id)
             {
-              "purge" => purge, "through_sequence" => through,
+              "purge_number" => purge, "through_sequence" => through,
               "through_digest" => checkpoint.head_digest,
               "previous_through" => previous_through, "removed_chained" => removed_chained,
               "removed_pre_chain" => removed_pre_chain, "archived" => !archive_sha256.nil?,
@@ -88,7 +88,7 @@ module Reeve
 
           def follow(current)
             @previous_through = current.through_sequence
-            @purge = current.purge + 1
+            @purge = current.purge_number + 1
             @previous_digest = current.retention_digest
             @start = { "through_sequence" => current.through_sequence,
                        "through_digest" => current.through_digest }

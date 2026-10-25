@@ -7,7 +7,7 @@ The entries table does not change; the audit-entry contract stays 4.
 | Column | Type | Null | Meaning |
 |---|---|---|---|
 | `id` | bigint | no | Surrogate; not digested |
-| `purge` | integer | no | 0, 1, 2… unique; serializes concurrent purges |
+| `purge_number` | integer | no | 0, 1, 2… unique; serializes concurrent purges. Not `purge`, a reserved word in MySQL |
 | `through_sequence` | bigint | no | The boundary: entries at or below it were purged |
 | `through_digest` | string(64) | no | The boundary checkpoint's head digest; the walk links to it |
 | `previous_through` | bigint | no | The previous record's boundary, or 0 |
@@ -19,7 +19,7 @@ The entries table does not change; the audit-entry contract stays 4.
 | `key_id` | string(16) | no | Fingerprint of the key that signed it |
 | `retention_digest` | string(64) | no | HMAC-SHA256, below |
 
-Indexes: unique `purge`.
+Indexes: unique `purge_number`.
 
 Rules: `through_sequence > previous_through`; `previous_through` equals the previous record's
 `through_sequence`; `removed_*` are counts at the time of the purge (a resumed purge does not
@@ -29,7 +29,7 @@ Digest canonical form:
 
 ```
 reeve-ledger-retention-v1\n[["previous_digest", <previous record's digest, or the genesis digest for purge 0>],
-                            ["purge", n], ["through_sequence", s], ["through_digest", "…"],
+                            ["purge_number", n], ["through_sequence", s], ["through_digest", "…"],
                             ["previous_through", p], ["removed_chained", c], ["removed_pre_chain", r],
                             ["archived", true], ["archive_sha256", "…" or null], ["purged_at", µs], ["key_id", "…"]]
 ```

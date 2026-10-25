@@ -139,7 +139,7 @@ RSpec.describe "a verification's report" do
     context "after a purge" do
       let(:summary) { Reeve::Audit::Chain::Retention::Check::Summary }
       let(:boundary) do
-        Struct.new(:purge, :through_sequence, :purged_at).new(0, 6_000, Time.utc(2025, 11, 1, 3, 0, 0))
+        Struct.new(:purge_number, :through_sequence, :purged_at).new(0, 6_000, Time.utc(2025, 11, 1, 3, 0, 0))
       end
 
       def retention(removed_pre_chain: 5_000)

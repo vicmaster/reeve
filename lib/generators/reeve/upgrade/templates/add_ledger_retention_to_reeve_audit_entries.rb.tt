@@ -19,7 +19,7 @@
 class AddLedgerRetentionToReeveAuditEntries < ActiveRecord::Migration[7.0]
   def change
     create_table :reeve_audit_retentions do |t|
-      t.integer  :purge,             null: false
+      t.integer  :purge_number,      null: false
       t.bigint   :through_sequence,  null: false
       t.string   :through_digest,    null: false, limit: 64
       t.bigint   :previous_through,  null: false
@@ -32,6 +32,6 @@ class AddLedgerRetentionToReeveAuditEntries < ActiveRecord::Migration[7.0]
       t.string   :retention_digest,  null: false, limit: 64
     end
 
-    add_index :reeve_audit_retentions, :purge, unique: true
+    add_index :reeve_audit_retentions, :purge_number, unique: true
   end
 end

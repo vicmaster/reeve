@@ -58,7 +58,7 @@ module Reeve
 
         def self.resumed(record, removed, warnings:)
           new(status: :purged, from: record.previous_through + 1, through: record.through_sequence,
-              purge: record.purge, removed_chained: record.removed_chained,
+              purge: record.purge_number, removed_chained: record.removed_chained,
               removed_pre_chain: record.removed_pre_chain, resumed: removed,
               archive_sha256: record.archive_sha256, warnings: warnings)
         end

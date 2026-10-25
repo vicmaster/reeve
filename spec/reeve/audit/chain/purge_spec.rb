@@ -287,7 +287,7 @@ RSpec.describe "purging the ledger" do
 
     it "is broken when a record is forged by someone without a key" do
       delete_rows(1..60)
-      record = { "purge" => 0, "through_sequence" => 60, "through_digest" => "0" * 64, "previous_through" => 0,
+      record = { "purge_number" => 0, "through_sequence" => 60, "through_digest" => "0" * 64, "previous_through" => 0,
                  "removed_chained" => 60, "removed_pre_chain" => 0, "archived" => false,
                  "archive_sha256" => nil, "purged_at" => Time.now.utc, "key_id" => Reeve.config.ledger_key_id,
                  "retention_digest" => SecureRandom.hex(32) }
@@ -301,7 +301,7 @@ RSpec.describe "purging the ledger" do
     # The forger copies entry 60's real digest, so the anchor's checkpoint there agrees with it.
     it "refuses to resume from a record signed by a key this host does not hold" do
       real = Reeve::Audit::Entry.find_by(chain_sequence: 60).chain_digest
-      record = { "purge" => 0, "through_sequence" => 60, "through_digest" => real, "previous_through" => 0,
+      record = { "purge_number" => 0, "through_sequence" => 60, "through_digest" => real, "previous_through" => 0,
                  "removed_chained" => 60, "removed_pre_chain" => 0, "archived" => false,
                  "archive_sha256" => nil, "purged_at" => Time.now.utc, "key_id" => "0123456789abcdef",
                  "retention_digest" => SecureRandom.hex(32) }

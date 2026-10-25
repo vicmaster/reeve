@@ -104,7 +104,7 @@ module Reeve
             values["retention_digest"] =
               Digest.call(keyring.signing_secret, values, previous_digest: plan.previous_digest)
             guard.pool.with_connection { |connection| insert(connection, values) }
-            values["purge"]
+            values["purge_number"]
           end
 
           def insert(connection, values)

@@ -51,9 +51,9 @@ module Reeve
           attr_reader :keyring
 
           def judge(record, index, previous, link)
-            if record.purge != index
+            if record.purge_number != index
               return altered(record,
-                             "is numbered #{record.purge}, not #{index}")
+                             "is numbered #{record.purge_number}, not #{index}")
             end
             return altered(record, "does not follow on from the purge before it") unless follows?(
               record, previous
@@ -62,7 +62,7 @@ module Reeve
             secret = keyring.for(record.key_id)
             if secret.nil?
               @report.call(:unknown_key, nil, "signed by key #{record.key_id}", nil, record.key_id,
-                           retention: record.purge)
+                           retention: record.purge_number)
               return :key_not_configured
             end
             return :verified if Digest.call(secret, record, previous_digest: link) ==
@@ -77,12 +77,12 @@ module Reeve
           end
 
           def altered(record, detail)
-            @report.call(:retention_altered, nil, detail, nil, nil, retention: record.purge)
+            @report.call(:retention_altered, nil, detail, nil, nil, retention: record.purge_number)
             :altered
           end
 
           def summary(record, status)
-            Summary.new(purge: record.purge, through_sequence: record.through_sequence,
+            Summary.new(purge: record.purge_number, through_sequence: record.through_sequence,
                         purged_at: record.purged_at, removed_chained: record.removed_chained,
                         removed_pre_chain: record.removed_pre_chain, archived: record.archived,
                         status: status)

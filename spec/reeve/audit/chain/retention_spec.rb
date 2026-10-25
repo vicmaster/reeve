@@ -16,7 +16,7 @@ RSpec.describe "retention records" do
   before { Ledger.prepare! }
 
   def fields(purge:, through:, previous: 0, **overrides)
-    { "purge" => purge, "through_sequence" => through, "through_digest" => "d" * 64,
+    { "purge_number" => purge, "through_sequence" => through, "through_digest" => "d" * 64,
       "previous_through" => previous, "removed_chained" => through - previous,
       "removed_pre_chain" => 0, "archived" => true, "archive_sha256" => "a" * 64,
       "purged_at" => Time.utc(2026, 10, 25, 12, 0, 0, 123_456), "key_id" => keyring.signing_id }
@@ -80,7 +80,7 @@ RSpec.describe "retention records" do
     it "reports an edited record, and keeps the boundary at the record before it" do
       first = record!(previous_digest: genesis, purge: 0, through: 6_000)
       record!(previous_digest: first, purge: 1, through: 9_000, previous: 6_000)
-      ActiveRecord::Base.connection.update("UPDATE reeve_audit_retentions SET through_sequence = 9500 WHERE purge = 1")
+      ActiveRecord::Base.connection.update("UPDATE reeve_audit_retentions SET through_sequence = 9500 WHERE purge_number = 1")
 
       result = check
 
@@ -91,7 +91,7 @@ RSpec.describe "retention records" do
     it "reports a deleted record by the break in the chain after it" do
       first = record!(previous_digest: genesis, purge: 0, through: 6_000)
       record!(previous_digest: first, purge: 1, through: 9_000, previous: 6_000)
-      ActiveRecord::Base.connection.delete("DELETE FROM reeve_audit_retentions WHERE purge = 0")
+      ActiveRecord::Base.connection.delete("DELETE FROM reeve_audit_retentions WHERE purge_number = 0")
 
       result = check
 
