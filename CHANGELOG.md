@@ -4,7 +4,25 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.8.0] - 2026-10-25
+
+Two additions to the tamper-evident ledger: **anchoring**, checkpoints of the chain kept
+outside the database, so deleting the newest entries or the whole ledger is caught; and
+**retention**, purging the oldest entries up to a checkpoint without breaking verification.
+No audit-entry contract change: it stays `4`.
+
+### Upgrading from 0.7.0
+
+1. `bundle update reeve`, then `bin/rails generate reeve:upgrade && bin/rails db:migrate`. It
+   adds one table, `reeve_audit_retentions`; nothing in the ledger table changes.
+2. Grant the application's database role `SELECT` on `reeve_audit_retentions`.
+3. If anything reads the text output of `bin/rails reeve:verify_ledger`, switch it to
+   `FORMAT=json`: every summary line now ends with its anchoring (`; not anchored` until you
+   set one up). Existing JSON keys are unchanged.
+
+Anchoring and retention are both opt-in; the README shows how to set each up.
+
+### Anchoring
 
 The chain's own records live in the same database as the entries, so two kinds of tampering
 went unseen: deleting the newest entries and rewinding the head to match, and deleting the
@@ -16,7 +34,7 @@ Verification checks the ledger against every checkpoint.
 **No contract change.** The audit-entry contract stays `4`. Nothing changes for a ledger
 write. (Retention, below, adds one table.)
 
-### Added
+#### Added
 
 - `bin/rails reeve:checkpoint_ledger` (`Reeve::Tasks.checkpoint_ledger`,
   `Reeve::Audit::Chain.checkpoint!`): makes a checkpoint, publishes it, and prints it. Exit `0`
@@ -40,7 +58,7 @@ write. (Retention, below, adds one table.)
   the suite's own `LedgerChain` never reads the anchor, since checkpoints earlier runs left
   name test databases that are gone.
 
-### Changed
+#### Changed
 
 - **Every summary line that follows a walk now ends with its anchoring**: `; not anchored`,
   or `; anchored at #48,000 (checkpoint 2026-10-25 14:00 UTC), 211 entries after it`. This
@@ -48,7 +66,7 @@ write. (Retention, below, adds one table.)
   `FORMAT=json` instead; its existing keys are unchanged, and it gains `checkpoints`,
   `anchored_at`, `beyond_anchor`, `walked_from` and `breaks[].checkpoint`.
 
-### Limits, stated plainly
+#### Limits, stated plainly
 
 - Entries written after the latest checkpoint can still be removed without trace. The summary
   line counts the entries still there after it, not ones deleted; how often you checkpoint is
@@ -787,4 +805,6 @@ is for:
   alone — unless what its absence means, or what an existing value covers, differs between
   rows written before and after it, which is major (contracts 3 and 4 are both examples).
   Removing or renaming a column, or changing what a value means, is major and bumps it.
+- A new table beside the ledger that leaves its rows unchanged is minor and leaves the
+  contract alone (`reeve_audit_retentions`, 0.8.0).
 - The audit-entry contract version is `4`.
