@@ -20,13 +20,25 @@ module Reeve
       # * **nothing to write or read** (no compliance tools, ledger not loaded) — skipped,
       #   saying the chain was not verified. Never passed.
       #
+      # With `anchored: true` (specs/004 research R8) it also makes a checkpoint after writing,
+      # publishes it through config.ledger_anchor, reads the anchor back, and verifies against
+      # that checkpoint alone. It passes only when the chain is intact and anchored at it: what
+      # a host's CI can prove is that its anchor is configured and round-trips. Whether
+      # production's checkpoints match production is the scheduled verify_ledger's job. Without
+      # it, the anchor is never read.
+      #
       #   Reeve::Checks::LedgerChain.new.call
+      #   Reeve::Checks::LedgerChain.new(anchored: true).call
       class LedgerChain < Base
         NOT_VERIFIED = "the ledger chain was not verified"
+        NOT_ANCHORED = "expected the ledger to be anchored"
+        NOT_RETURNED = "the checkpoint it published did not come back from config.ledger_anchor"
 
-        def initialize(tools: nil, principals: nil, arguments: {}, invoke: nil, ledger: nil)
+        def initialize(tools: nil, principals: nil, arguments: {}, invoke: nil, ledger: nil,
+                       anchored: false)
           @tools = tools
           @principals = principals
+          @anchored = anchored
           super(tool: nil, arguments: arguments, invoke: invoke, ledger: ledger)
         end
 
@@ -37,11 +49,53 @@ module Reeve
 
           unwritten = write_entries
           return unwritten_entry(unwritten) if unwritten
+          return judge(ledger.verify_chain) unless @anchored
 
-          judge(ledger.verify_chain)
+          anchored
         end
 
         private
+
+        def anchored
+          return not_anchored("no anchor is configured: set config.ledger_anchor") if anchor.nil?
+          unless ledger.respond_to?(:checkpoint!)
+            return skipped("this ledger cannot make a checkpoint")
+          end
+
+          checkpoint, failure = round_trip
+          return not_anchored(failure) if failure
+
+          judge_anchored(ledger.verify_chain(checkpoints: [checkpoint]), checkpoint)
+        end
+
+        # The checkpoint it made and read back from the anchor, or why it could not.
+        def round_trip
+          made = ledger.checkpoint!
+          return [nil, made.to_s.lines.first.chomp] unless made&.made? && made.published?
+          unless Array(anchor.checkpoints).include?(made.checkpoint.to_line)
+            return [nil,
+                    NOT_RETURNED]
+          end
+
+          [made.checkpoint, nil]
+        end
+
+        def anchor
+          Reeve.config.ledger_anchor
+        end
+
+        def judge_anchored(verification, checkpoint)
+          return judge(verification) unless verification&.intact?
+          if verification.anchored_at&.head_sequence == checkpoint.head_sequence
+            return judge(verification)
+          end
+
+          not_anchored(verification.to_s.lines.first.chomp)
+        end
+
+        def not_anchored(reason)
+          failed("#{NOT_ANCHORED}, but #{reason}", coverage: :not_anchored)
+        end
 
         def subject
           @subject ||= Array(@tools || Testing.compliance_tools).first

@@ -71,13 +71,29 @@ module Reeve
       # The chain's verification of the whole ledger (specs/002), or nil when the ledger is
       # not loaded. The kit's only way to the chain: it names Reeve::Audit::Chain here, at
       # call time, so `require "reeve/testing"` still loads with no ActiveRecord at all.
-      def verify_chain
-        return nil unless available? && Reeve::Audit.const_defined?(:Chain, false)
+      #
+      # Against `checkpoints` only, never the configured anchor's (specs/004 research R8): a
+      # test database is emptied between runs, and every checkpoint an earlier run left names
+      # a chain that is gone.
+      def verify_chain(checkpoints: [])
+        return nil unless chain?
 
-        Reeve::Audit::Chain.verify(entry_class: entry_class)
+        Reeve::Audit::Chain.verify(entry_class: entry_class, checkpoints: checkpoints)
+      end
+
+      # A checkpoint of the ledger, published to config.ledger_anchor (specs/004), or nil when
+      # the ledger is not loaded.
+      def checkpoint!
+        return nil unless chain?
+
+        Reeve::Audit::Chain.checkpoint!(entry_class: entry_class)
       end
 
       private
+
+      def chain?
+        available? && Reeve::Audit.const_defined?(:Chain, false)
+      end
 
       def entry_class
         return @entry_class if defined?(@entry_class)
