@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 require_relative "support/fixtures"
 
 # T045 / FR-016, FR-017, FR-019. One group per check in the contracts/testing-kit.md
@@ -341,6 +343,73 @@ RSpec.describe Reeve::Checks, :reeve_fixtures do
 
       expect(result).to be_failed
       expect(result.message).to include("wrote no entry")
+    end
+
+    # specs/004 research R8: the anchor's history names chains a test database no longer has, so
+    # the check never reads it unless asked, and then only for the checkpoint it made itself.
+    it "never reads the configured anchor unless asked to" do
+      anchor = Ledger::RecordingAnchor.new.tap { |a| a.publish('{"not":"read"}') }
+      Reeve.config.ledger_anchor = anchor
+      allow(anchor).to receive(:checkpoints).and_call_original
+
+      expect(check.call).to be_passed
+      expect(anchor).not_to have_received(:checkpoints)
+    end
+
+    describe "anchored: true" do
+      let(:anchor) { Ledger::RecordingAnchor.new }
+
+      before { Reeve.config.ledger_anchor = anchor }
+
+      it "passes when its own checkpoint round-trips through the anchor and the chain is anchored at it" do
+        result = check(anchored: true).call
+
+        expect(result).to be_passed
+        expect(result.message).to match(/INTACT — sequences 1–2 verified .*; anchored at #2 \(checkpoint .+\), 0 entries after it\z/)
+        expect(anchor.lines.size).to eq(1)
+      end
+
+      it "ignores checkpoints the anchor held before the run, which name chains long gone" do
+        anchor.publish(JSON.generate("format" => "from-an-earlier-run"))
+
+        expect(check(anchored: true).call).to be_passed
+      end
+
+      it "fails, naming the setting, with no anchor configured" do
+        Reeve.config.ledger_anchor = nil
+
+        result = check(anchored: true).call
+
+        expect(result).to be_failed
+        expect(result.message).to include("config.ledger_anchor")
+      end
+
+      it "fails when the anchor fails" do
+        Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new(error: IOError.new("bucket unreachable"))
+
+        result = check(anchored: true).call
+
+        expect(result).to be_failed
+        expect(result.message).to include("bucket unreachable")
+      end
+
+      it "fails when the checkpoint it published does not come back" do
+        forgetful = Ledger::RecordingAnchor.new
+        def forgetful.checkpoints = []
+        Reeve.config.ledger_anchor = forgetful
+
+        result = check(anchored: true).call
+
+        expect(result).to be_failed
+        expect(result.message).to include("did not come back")
+      end
+
+      it "still fails on a break, anchored or not" do
+        chained!(3)
+        Reeve::Audit::Entry.where(chain_sequence: 2).delete_all
+
+        expect(check(anchored: true).call).to be_failed
+      end
     end
 
     it "is skipped, saying the chain was not verified, when there are no compliance tools" do

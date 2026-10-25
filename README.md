@@ -200,7 +200,7 @@ bin/rails reeve:verify_ledger
 ```
 
 ```text
-reeve ledger: INTACT — sequences 1–48,211 verified (head at start: 48,211); 5,000 earlier entries not covered (5,000 when the chain started)
+reeve ledger: INTACT — sequences 1–48,211 verified (head at start: 48,211); 5,000 earlier entries not covered (5,000 when the chain started); not anchored
 ```
 
 It exits `0` when the chain is intact, `1` when it is broken, and `2` when it could not
@@ -218,7 +218,8 @@ puts result     # the report above, with every break listed under it
 
 In CI the compliance suite you already run includes `LedgerChain`, in both frameworks:
 it writes entries of its own and fails on a broken chain, a missing key, or entries that
-were not chained.
+were not chained. "Not anchored" on the summary line is explained under **Anchoring the
+chain** below.
 
 **The key.** The generated initializer derives it from `secret_key_base`:
 
@@ -256,6 +257,100 @@ rotation.epoch    # => 1
 Verification then lists each epoch under its summary line, with the key fingerprint, where
 it begins, and whether it verified. The CHANGELOG has the full procedure.
 
+**Anchoring the chain.** The chain's own records live in the same database as the entries, so
+someone who deletes the newest entries and rewinds the head to match, or deletes the whole
+ledger, leaves nothing behind that verification can see. A *checkpoint* is a second witness:
+one signed line saying how far the chain reached (its genesis, its head, its latest key
+epoch), kept where the database's users cannot change it. It holds digests and counts only,
+never entry content or a key.
+
+Point an anchor at that storage. The line goes at the bottom of
+`config/initializers/reeve.rb`, after `require "reeve/audit"` (which defines `FileAnchor`),
+outside the `Reeve.configure` block, hence `Reeve.config`:
+
+```ruby
+require "reeve/audit"
+
+Reeve.config.ledger_anchor =
+  Reeve::Audit::FileAnchor.new("/mnt/ledger-anchor/#{Rails.env}.checkpoints")
+```
+
+Use one anchor per environment, on storage outside the database host, such as a mount backed
+by an object-locked bucket; a file next to the database protects nothing. The hosts that make
+checkpoints need to write the file (it is created on the first one), and the hosts that verify
+need to read it. Any object with `publish(line)` and `checkpoints` works in its place.
+
+Then make a checkpoint on a schedule, from one host (hourly, say), and keep verifying as
+before. Alert on anything but `0` from either task. `reeve:checkpoint_ledger` exits `1` when
+it refused (no key, or no chain until the first guarded call) or the anchor failed, and still
+prints the line so it can be stored by hand. Two runs at once are safe.
+
+```bash
+bin/rails reeve:checkpoint_ledger   # exit 0 made and published
+bin/rails reeve:verify_ledger       # checks the ledger against every checkpoint
+```
+
+```text
+reeve ledger: INTACT — sequences 1–48,211 verified (head at start: 48,211); 5,000 earlier entries not covered (5,000 when the chain started); anchored at #48,000 (checkpoint 2026-10-25 14:00 UTC), 211 entries after it
+```
+
+Every checkpoint is checked: a ledger that no longer reaches one, holds another entry where it
+saw one, or lost an epoch record it named, is BROKEN (exit `1`), and so is an emptied ledger,
+which without a checkpoint reads only as "no chain". The newest entries deleted with the head
+rewound read like this:
+
+```text
+reeve ledger: BROKEN — 1 break in sequences 1–46,211; 5,000 earlier entries not covered (5,000 when the chain started); anchored at #44,000 (checkpoint 2026-10-25 13:00 UTC), 2,211 entries after it
+  totals: checkpoint_not_reached 1
+  checkpoint #48,000 checkpoint_not_reached the head is at 46,211; entries the checkpoint saw were removed
+```
+
+What it does not cover: entries written after the latest checkpoint can still be removed
+without trace. "211 entries after it" counts the entries still there past the checkpoint; it
+cannot see ones that were deleted, so how often you checkpoint is the size of that window.
+`reeve:rotate_ledger_key` makes a checkpoint itself after opening an epoch. Writes never touch
+the anchor.
+
+*Restores and resets.* Restoring a backup older than a checkpoint reads as BROKEN, truthfully:
+the restored ledger lost entries that checkpoint saw. Resetting a database on purpose (a
+staging rebuild) is the same, so start a new anchor file for the new ledger: change the path
+(`staging-2026-10-25.checkpoints`, say), keep the old file as the record of the old ledger, and
+make a checkpoint. Until then the run reads "not anchored". `CHECKPOINTS=` (empty) verifies
+without any checkpoint, for a one-off check, never as the fix.
+
+*Other sources, large ledgers.* `CHECKPOINTS=path` verifies against a file of checkpoint lines
+instead of the anchor, say an auditor's copy. `FROM=latest` walks only what came after the
+newest checkpoint: it first checks that checkpoint (its signature, the genesis and epoch it
+names, and that its entry still has the digest it saw), then verifies every entry after it.
+Entries before it are not re-verified by that run, and the summary says how many; keep a full
+run on a slower schedule. With no checkpoint to start from it exits `2`. From Ruby:
+
+```ruby
+Reeve::Audit::Chain.checkpoint!.checkpoint.to_line            # => "{\"epoch\":1,…}"
+Reeve::Audit::Chain.verify(checkpoints: lines).anchored_at    # the highest checkpoint that held
+```
+
+*In CI.* The `LedgerChain` check the compliance suite runs never reads the anchor, so
+configuring one does not change it: a test database is emptied between runs, and old
+checkpoints name ledgers that are gone. To prove the anchor works, run the anchored variant as
+a test of its own, with the test environment's anchor pointed at a scratch file such as
+`Rails.root.join("tmp/ledger.checkpoints")`. It makes a checkpoint, reads it back through the
+anchor, and verifies against that one alone:
+
+```ruby
+# RSpec
+it "anchors the ledger" do
+  result = Reeve::Checks::LedgerChain.new(anchored: true).call
+  expect(result).to be_passed, result.message
+end
+
+# Minitest
+def test_anchors_the_ledger
+  result = Reeve::Checks::LedgerChain.new(anchored: true).call
+  assert result.passed?, result.message
+end
+```
+
 A dedicated key decouples the two: `config.ledger_key = Rails.application.credentials.reeve_ledger_key`.
 Keys must be at least 32 bytes and are only ever printed as 16-character fingerprints.
 Without a key, every guarded call fails closed; under `audit_failure_mode = :warn` it is
@@ -271,16 +366,22 @@ recorded unchained instead, logged each time, and reported by verification.
 - the chain record removed while chained rows remain;
 - an entry whose key id or key epoch was changed, or that names an epoch with no record, and
   an epoch record that was changed, or removed while entries name it (one forged under a key
-  you do not hold reads as unverifiable, never intact).
+  you do not hold reads as unverifiable, never intact);
+- with checkpoints: any entry the latest checkpoint saw removed, even with the head rewound;
+  the whole ledger deleted or replaced; an epoch record a checkpoint named, removed or changed;
+  a checkpoint edited, or forged without a key you hold.
 
 **Not detected** — stated plainly, because these are the limits of the guarantee:
 
 1. **A leaked key.** Anyone holding it can rewrite the chain from any point forward. By
-   default that is anyone holding `secret_key_base`.
-2. **The newest rows deleted by someone who also rewinds the chain record's head.** Only a
-   checkpoint held outside the database could catch that; Reeve does not ship one.
-3. **The whole ledger deleted, chain record included.** Reported as *no chain*, never as a
-   pass — but indistinguishable from a ledger that was never chained.
+   default that is anyone holding `secret_key_base`. Not past a checkpoint made before the
+   leak, though: rewriting an entry it saw changes the digest it names.
+2. **The newest rows deleted by someone who also rewinds the chain record's head**, unless a
+   checkpoint saw them. Rows after the latest checkpoint stay exposed; the summary line counts
+   them.
+3. **The whole ledger deleted, chain record included**, without a checkpoint. Reported as
+   *no chain*, never as a pass, but indistinguishable from a ledger that was never chained.
+   And checkpoints are only as safe as their store: one an attacker can delete protects nothing.
 4. **Rows written before you upgraded.** They are counted as "not covered" and are exactly
    as trustworthy as they were before. Likewise, entries without a key epoch — chained by
    0.6.0, before or during the upgrade — are checked as 0.6.0 checked them: a rewritten key id
@@ -309,6 +410,11 @@ same door the built-in ones use, or verification reports them as unchained:
 ```ruby
 Reeve::Audit::Chain.new(entry_class: Reeve::Audit::Entry).append!(row)
 ```
+
+**Upgrading from 0.7.0:** no migration and nothing to configure; anchoring is opt-in. Every
+summary line now ends with its anchoring (`; not anchored` until you set one up), so anything
+that matches the whole text line should read `FORMAT=json` instead, whose existing keys are
+unchanged.
 
 **Upgrading from 0.6.0:** `bin/rails generate reeve:upgrade && bin/rails db:migrate` before
 the new code serves traffic, and grant `INSERT, SELECT` on `reeve_audit_chain_epochs`. The next guarded call opens epoch 0;

@@ -16,6 +16,12 @@ module Reeve
           new(signing: config.ledger_key, retired: config.retired_ledger_keys)
         end
 
+        # The configured keys, or only `keys` when given: how an auditor verifies with their
+        # own copy.
+        def self.verifying(keys)
+          keys ? new(signing: nil, retired: keys) : from(Reeve.config)
+        end
+
         def initialize(signing:, retired: [])
           @signing_secret = signing
           @by_id = {}

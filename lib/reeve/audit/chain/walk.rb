@@ -21,14 +21,19 @@ module Reeve
         # `link` is the digest the first row must link to (the genesis), or nil when there
         # is no chain record to take it from. `report` receives (kind, sequence, detail).
         # `epochs` is the EpochRules the rows are checked against (specs/003 FR-011).
-        def initialize(entry_class:, keyring:, batch_size:, link:, report:, epochs:)
+        #
+        # `start` is the sequence of a checkpoint the walk begins after (specs/004 FR-015), with
+        # `link` its digest: the walk is then exactly the one from the genesis, resumed there.
+        def initialize(entry_class:, keyring:, batch_size:, link:, report:, epochs:, start: 0)
           @entry_class = entry_class
           @keyring = keyring
           @batch_size = batch_size
           @report = report
           @epochs = epochs
-          @expected = 1
-          @last_sequence = 0
+          @start = start
+          @expected = start + 1
+          @last_sequence = start
+          @last_digest = start.positive? ? link : nil
           @link = link
           @verify_first_link = !link.nil?
         end
@@ -124,6 +129,7 @@ module Reeve
         # against SC-004's 300. SQLite derived the bound on its own, which hid it there.
         def batch_scope(after, limit)
           scope = entry_class.where.not(chain_sequence: nil)
+          scope = scope.where("chain_sequence > ?", @start) if @start.positive? && after.nil?
           scope = scope.where("chain_sequence <= ?", limit) if limit
           if after
             scope = scope.where("chain_sequence >= ?", after[0])

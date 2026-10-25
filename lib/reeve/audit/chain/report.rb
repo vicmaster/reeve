@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "time"
+
 module Reeve
   module Audit
     class Chain
@@ -46,14 +48,27 @@ module Reeve
         end
 
         def intact
+          if @v.walked_from
+            return "#{PREFIX} INTACT — #{anchor_text.walked_from}; #{uncovered}; #{anchor_text}"
+          end
+
           "#{PREFIX} INTACT — sequences #{range(@v.covered)} verified " \
-            "(head at start: #{number(@v.head_at_start)}); #{uncovered}"
+            "(head at start: #{number(@v.head_at_start)}); #{uncovered}; #{anchor_text}"
         end
 
         def broken
           count = @v.breaks.size
+          breaks = "#{number(count)} break#{'s' unless count == 1}"
+          if anchor_text.emptied?
+            return "#{PREFIX} BROKEN — #{breaks} in the ledger; #{anchor_text.emptied}"
+          end
+
           where = @v.covered ? "in sequences #{range(@v.covered)}" : "in the ledger"
-          "#{PREFIX} BROKEN — #{number(count)} break#{'s' unless count == 1} #{where}; #{uncovered}"
+          "#{PREFIX} BROKEN — #{breaks} #{where}; #{uncovered}; #{anchor_text}"
+        end
+
+        def anchor_text
+          @anchor_text ||= AnchorText.new(@v)
         end
 
         def no_chain
@@ -66,22 +81,8 @@ module Reeve
         end
 
         def unverifiable
-          unknown = @v.breaks.select { |found| found.kind == :unknown_key }
-          rows = unknown.count { |found| entry_position?(found.sequence) }
-          checked = @v.covered ? @v.covered.size - rows : 0
-          "#{PREFIX} UNVERIFIABLE — #{number(rows)} entries signed by #{missing_keys(unknown)} " \
-            "not configured; the other #{number(checked)} in #{range(@v.covered)} show no " \
-            "breaks, which is not a pass; #{number(@v.uncovered_now)} earlier entries not covered"
-        end
-
-        # The genesis is position 0 and is not an entry.
-        def entry_position?(sequence)
-          sequence.is_a?(Integer) && sequence.positive?
-        end
-
-        def missing_keys(unknown)
-          keys = unknown.map(&:key_id).compact.uniq
-          keys.one? ? "key #{keys.first}, which is" : "keys #{keys.join(', ')}, which are"
+          "#{PREFIX} UNVERIFIABLE — #{UnverifiableText.new(@v)}; " \
+            "#{number(@v.uncovered_now)} earlier entries not covered; #{anchor_text}"
         end
 
         def uncovered
@@ -106,12 +107,17 @@ module Reeve
           "  … and #{number(remaining)} more (the totals above are complete)"
         end
 
+        # One space at least between columns, so a label or kind longer than its column
+        # (`checkpoint #48,000`, `checkpoint_not_reached`) never runs into the next.
         def line_for(found)
-          kind = found.kind.to_s.ljust(KIND_WIDTH)
-          "  #{label(found).ljust(LABEL_WIDTH)}#{kind}#{found.detail}".rstrip
+          label = label(found).ljust(LABEL_WIDTH - 1)
+          kind = found.kind.to_s.ljust(KIND_WIDTH - 1)
+          "  #{label} #{kind} #{found.detail}".rstrip
         end
 
         def label(found)
+          return "checkpoint ##{number(found.checkpoint)}" if found.checkpoint
+
           sequence = found.sequence
           return "invocation #{found.invocation_id}" if found.invocation_id
           return "epoch #{found.epoch}" if sequence.nil? && found.epoch
@@ -129,6 +135,118 @@ module Reeve
 
         def number(value)
           self.class.number(value.to_i)
+        end
+      end
+
+      # What an unverifiable run could not check, and what it did (the UNVERIFIABLE line). Rows
+      # signed by a key that is not configured are counted; a checkpoint whose key is missing is
+      # named apart from them and is not one (specs/004).
+      class UnverifiableText
+        def initialize(verification)
+          @v = verification
+          unknown = verification.breaks.select { |found| found.kind == :unknown_key }
+          @signed, @checkpoints = unknown.partition { |found| found.checkpoint.nil? }
+        end
+
+        def to_s
+          rows = @signed.count { |found| entry?(found.sequence) }
+          checked = @v.covered ? @v.covered.size - rows : 0
+          "#{unchecked(rows)}; the other #{Report.number(checked)} in #{range} show no breaks, " \
+            "which is not a pass"
+        end
+
+        private
+
+        def unchecked(rows)
+          parts = []
+          parts << "#{Report.number(rows)} entries signed by #{missing(@signed)}" if @signed.any?
+          if @checkpoints.any?
+            count = @checkpoints.size
+            parts << "#{Report.number(count)} checkpoint#{'s' unless count == 1} signed by " \
+                     "#{missing(@checkpoints)}"
+          end
+          parts.join("; ")
+        end
+
+        # The genesis is position 0 and is not an entry.
+        def entry?(sequence)
+          sequence.is_a?(Integer) && sequence.positive?
+        end
+
+        def missing(unknown)
+          keys = unknown.map(&:key_id).compact.uniq
+          named = keys.one? ? "key #{keys.first}, which is" : "keys #{keys.join(', ')}, which are"
+          "#{named} not configured"
+        end
+
+        def range
+          return "—" if @v.covered.nil?
+
+          "#{Report.number(@v.covered.first)}–#{Report.number(@v.covered.last)}"
+        end
+      end
+
+      # What a run was anchored by, in words (specs/004 FR-014, FR-015): the clause every walked
+      # summary line ends with, and the wording for a walk from a checkpoint and for an emptied
+      # ledger that checkpoints saw.
+      class AnchorText
+        # A checkpoint's time for people: "2026-10-25 14:00 UTC". A time that does not parse is
+        # shown as written; verification never depends on it.
+        def self.made_on(made_at)
+          Time.iso8601(made_at).utc.strftime("%Y-%m-%d %H:%M UTC")
+        rescue ArgumentError
+          made_at
+        end
+
+        def initialize(verification)
+          @v = verification
+        end
+
+        # The highest checkpoint that checked, and how many entries it does not cover.
+        def to_s
+          anchor = @v.anchored_at
+          return "not anchored" if anchor.nil?
+
+          after = @v.beyond_anchor.to_i
+          "anchored at ##{number(anchor.head_sequence)} (checkpoint #{made_on(anchor)}), " \
+            "#{number(after)} #{after == 1 ? 'entry' : 'entries'} after it"
+        end
+
+        def walked_from
+          start = @v.walked_from
+          from = "checkpoint ##{number(start.head_sequence)} (#{made_on(start)})"
+          walked = if @v.covered
+                     "sequences #{range} verified from #{from}"
+                   else
+                     "no entries after #{from}"
+                   end
+          "#{walked}; #{number(start.head_sequence)} earlier chained entries not walked by " \
+            "this run"
+        end
+
+        # No walk, and checkpoints that saw a chain.
+        def emptied?
+          @v.head_at_start.nil? && @v.checkpoints.any?
+        end
+
+        def emptied
+          count = @v.checkpoints.size
+          "the ledger has no chain, but #{number(count)} checkpoint#{'s' unless count == 1} " \
+            "name#{'s' if count == 1} one"
+        end
+
+        private
+
+        def number(value)
+          Report.number(value)
+        end
+
+        def made_on(checkpoint)
+          AnchorText.made_on(checkpoint.made_at)
+        end
+
+        def range
+          "#{number(@v.covered.first)}–#{number(@v.covered.last)}"
         end
       end
 

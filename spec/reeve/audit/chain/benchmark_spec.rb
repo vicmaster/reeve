@@ -67,7 +67,8 @@ RSpec.describe "ledger write cost", :benchmark do
   end
 end
 
-# specs/002 T054 / SC-004: verifying a large ledger, in time and in memory.
+# specs/002 T054 / SC-004: verifying a large ledger, in time and in memory; and specs/004
+# SC-004: checkpointing one.
 #
 #   bundle exec rspec --tag benchmark_large spec/reeve/audit/chain/benchmark_spec.rb
 #
@@ -133,6 +134,21 @@ RSpec.describe "verifying a large ledger", :benchmark_large do
     [result, peak - baseline]
   ensure
     sampler&.kill
+  end
+
+  # specs/004 SC-004: a checkpoint reads the head and the latest epoch, whatever the ledger's
+  # size. Measured on the largest ledger this file builds, and checked to verify against it.
+  it "checkpoints 1,000,000 entries in under a second" do
+    build_chain(1_000_000)
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    made = Reeve::Audit::Chain.checkpoint!(anchor: nil)
+    seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+    expect(made.checkpoint.head_sequence).to eq(1_000_000)
+    RSpec.configuration.reporter.message(
+      format("checkpoint (%<db>s, 1000000 entries): %<ms>.1f ms", db: SpecDatabase.adapter, ms: seconds * 1000)
+    )
+    expect(seconds).to be < 1
   end
 
   it "verifies 100,000 and 1,000,000 entries, reporting time and peak memory" do

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "rake"
 require "securerandom"
 require "stringio"
@@ -177,6 +178,44 @@ RSpec.describe "rotating the ledger key" do
       expect(out.string.lines.first).to start_with("reeve ledger key: ROTATED — epoch 1 opened with key " \
                                                    "#{fingerprint(new_key)} from sequence 3")
       expect(out.string).to include("epoch 0 (key #{fingerprint(old_key)})")
+    end
+
+    # specs/004 FR-008: the epoch just opened is pinned without a second step.
+    context "with an anchor configured" do
+      let(:anchor) { Ledger::RecordingAnchor.new }
+
+      before { Reeve.config.ledger_anchor = anchor }
+
+      it "makes a checkpoint after ROTATED and publishes it, naming the new epoch" do
+        2.times { chain.append!(row) }
+        configure(new_key, retired: [old_key])
+
+        expect(run).to eq(0)
+        lines = out.string.lines(chomp: true)
+        expect(lines.first).to start_with("reeve ledger key: ROTATED")
+        expect(lines).to include(start_with("reeve ledger checkpoint: MADE — head #2, epoch 1"))
+        expect(JSON.parse(anchor.lines.last)["epoch"]).to eq(1)
+      end
+
+      it "makes none for CURRENT or REFUSED" do
+        chain.append!(row)
+        run
+        configure(new_key)
+        run
+
+        expect(anchor.lines).to be_empty
+        expect(out.string).not_to include("checkpoint")
+      end
+
+      it "exits 1 when the anchor fails, and the epoch stays opened" do
+        chain.append!(row)
+        configure(new_key, retired: [old_key])
+        Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new(error: IOError.new("bucket unreachable"))
+
+        expect(run).to eq(1)
+        expect(out.string).to include("the anchor failed (bucket unreachable (IOError))")
+        expect(epochs.map(&:first)).to eq([0, 1])
+      end
     end
 
     it "exits 0 and says CURRENT when there is nothing to do" do

@@ -25,10 +25,14 @@ module Reeve
         RECORD_MISSING = "chained rows exist but the chain record does not"
         UNCHAINED_ROW = "a contract-3+ row outside the chain, written after it started (by clock)"
 
-        def initialize(entry_class:, keyring:, batch_size: BATCH_SIZE)
+        # `checkpoints` are Checkpoints read from outside the database, and `from` one of them to
+        # walk from instead of the genesis (specs/004; Anchoring).
+        def initialize(entry_class:, keyring:, batch_size: BATCH_SIZE, checkpoints: [], from: nil)
           @entry_class = entry_class
           @keyring = keyring
           @batch_size = batch_size
+          @anchoring = Anchoring.new(entry_class: entry_class, keyring: keyring,
+                                     checkpoints: checkpoints, from: from)
         end
 
         def call
@@ -36,37 +40,51 @@ module Reeve
 
           ChainRecord.require_same_database!(entry_class)
 
+          @breaks = []
           record = read_head
-          return unwalked(:no_chain) unless record&.head_sequence&.positive? || chained_rows?
+          return verify_chain(record) if record&.head_sequence&.positive? || chained_rows?
+          return unwalked(:no_chain) unless anchoring.any?
 
-          verify_chain(record)
+          # A ledger with no chain that checkpoints saw: broken, not "no chain" (FR-013).
+          unwalked(checkpoints: anchoring.emptied(record, report: method(:add)))
         end
 
         private
 
-        attr_reader :entry_class, :keyring, :batch_size, :breaks
+        attr_reader :entry_class, :keyring, :batch_size, :breaks, :anchoring
 
         # The epochs are read after the head: every row the walk visits committed, with any
         # epoch it opened, before that read. They are checked against the head read *after*
         # the walk, which is later than they were read, so an epoch opened by a rotation
         # during the run is never mistaken for one placed beyond the head.
         def verify_chain(record)
-          @breaks = []
           epochs = EpochRules.read(keyring: keyring, entry_class: entry_class)
+          failed = anchoring.failed_start(record, epochs.records, report: method(:add))
+          return unwalked(record: record, checkpoints: failed) if failed
+
           walk = walk(record, epochs)
+          head_at_end = check_around(record, walk, epochs)
+          anchored = anchoring.check(record, head_at_end || record, epochs.records,
+                                     report: method(:add))
+
+          result(record, head_at_end, walk.last_sequence, epochs, anchored)
+        end
+
+        # The chain record, rows past the head, unchained rows and the epochs, each checked
+        # against what the walk found; returns the head as read after the walk.
+        def check_around(record, walk, epochs)
           check_record(record, walk)
           head_at_end = record && read_head
           check_beyond_head(head_at_end || record)
           check_unchained(record)
           epochs.check!(record, head_at_end || record, report: method(:add))
-
-          result(record, head_at_end, walk.last_sequence, epochs)
+          head_at_end
         end
 
         def walk(record, epochs)
           Walk.new(entry_class: entry_class, keyring: keyring, batch_size: batch_size,
-                   link: record&.genesis_digest, report: method(:add), epochs: epochs)
-              .call(record&.head_sequence)
+                   link: anchoring.link(record), report: method(:add), epochs: epochs,
+                   start: anchoring.start).call(record&.head_sequence)
         end
 
         # A seam as well as a read: the specs wrap it to land a write mid-walk.
@@ -127,16 +145,19 @@ module Reeve
           end
         end
 
-        # `epoch` names the key epoch a break is about when it has no sequence (specs/003).
-        def add(kind, sequence, detail = nil, invocation_id = nil, key_id = nil, epoch: nil)
+        # `epoch` names the key epoch, and `checkpoint` the checkpoint, a break is about when it has
+        # no sequence (specs/003, specs/004).
+        def add(kind, sequence, detail = nil, invocation_id = nil, key_id = nil, epoch: nil,
+                checkpoint: nil)
           found = { kind: kind, sequence: sequence, detail: detail, invocation_id: invocation_id }
-          breaks << Verification::Break.new(**found, key_id: key_id, epoch: epoch)
+          breaks << Verification::Break.new(**found, key_id: key_id, epoch: epoch,
+                                                     checkpoint: checkpoint)
         end
 
-        def result(record, head_at_end, last_sequence, epochs)
+        def result(record, head_at_end, last_sequence, epochs, anchored)
           Verification.new(
             status: Verification.status_for(breaks), breaks: breaks,
-            covered: covered(record, last_sequence),
+            covered: covered(record, last_sequence), walked_from: anchoring.from, **anchored,
             epochs: epochs.summaries, before_first_epoch: epochs.before_first_epoch,
             head_at_start: record&.head_sequence, head_at_end: head_at_end&.head_sequence,
             uncovered_now: count_uncovered, uncovered_at_genesis: record&.pre_chain_count,
@@ -146,13 +167,18 @@ module Reeve
 
         def covered(record, last_sequence)
           last = record ? record.head_sequence : last_sequence
-          last.positive? ? 1..last : nil
+          first = anchoring.start + 1
+          last >= first ? first..last : nil
         end
 
-        # An answer given before any walk: no key to walk with, or no chain to walk.
-        def unwalked(status, reason = nil)
-          Verification.new(status: status, reason: reason,
-                           uncovered_now: count_uncovered, unchained_now: count_unchained)
+        # An answer given before any walk: no key to walk with, no chain to walk, or checkpoints
+        # whose own breaks say why there was nothing to walk (specs/004). Without a status, the
+        # breaks decide it.
+        def unwalked(status = nil, reason = nil, record: nil, checkpoints: [])
+          Verification.new(status: status || Verification.status_for(breaks), reason: reason,
+                           breaks: breaks || [], head_at_start: record&.head_sequence,
+                           checkpoints: checkpoints, uncovered_now: count_uncovered,
+                           unchained_now: count_unchained)
         end
 
         def chained_rows?

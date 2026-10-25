@@ -3,8 +3,9 @@
 require "securerandom"
 require_relative "../support/ledger"
 
-# specs/003, code review R2/R3: the reads a write or a rotation makes under the chain
-# record's lock must see rows another writer committed while this one queued for it.
+# specs/003, code review R2/R3: the reads a write, a rotation or a checkpoint (specs/004) makes
+# under the chain record's lock must see rows another writer committed while this one queued
+# for it.
 #
 # InnoDB at REPEATABLE READ — MySQL's default — serves a plain SELECT from the snapshot the
 # transaction took at its first read. Under the default Recorder the ledger write runs inside
@@ -90,5 +91,21 @@ RSpec.describe "chain reads under the lock see the latest committed rows (MySQL)
     expect(rotation.first_sequence).to eq(4)
     chain.append!(row)
     expect(Reeve::Audit::Chain.verify.status).to eq(:intact)
+  end
+
+  # specs/004 FR-005: a checkpoint names the head and the epoch as they are, not as the host's
+  # snapshot last saw them; a stale one would read as truncation the next time it is checked.
+  it "checkpoints the head and the epoch another writer committed after the host's snapshot" do
+    configure(key_b, retired: [key_a])
+
+    made = inside_a_host_transaction_that_has_read do
+      elsewhere { chain.append!(row) } # head 2, opens epoch 1 with key B, commits
+      Reeve::Audit::Chain.checkpoint!(anchor: nil)
+    end
+
+    record = Reeve::Audit::ChainRecord.ledger
+    expect([made.checkpoint.head_sequence, made.checkpoint.head_digest]).to eq([2, record.head_digest])
+    expect(made.checkpoint.epoch).to eq(1)
+    expect(Reeve::Audit::Chain.verify(checkpoints: [made.checkpoint]).status).to eq(:intact)
   end
 end

@@ -94,6 +94,19 @@ RSpec.describe "Reeve errors" do
     end
   end
 
+  describe Reeve::CheckpointError do
+    it "names the checkpoint's position in its list, so the operator can find the line" do
+      error = described_class.new("not JSON", position: 3)
+
+      expect(error.position).to eq(3)
+      expect(error.message).to eq("checkpoint 3 cannot be read: not JSON")
+    end
+
+    it "reads without a position" do
+      expect(described_class.new("not JSON").message).to eq("a checkpoint cannot be read: not JSON")
+    end
+  end
+
   describe Reeve::AuditWriteError do
     it "carries the invocation it failed to record and the cause" do
       cause = StandardError.new("connection reset")

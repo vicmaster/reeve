@@ -44,13 +44,19 @@ module Reeve
         # latest epoch's digest, or to the genesis for epoch 0, so the chain must have
         # started.
         def open!(signer, first_sequence:)
-          sql = "SELECT epoch, epoch_digest FROM #{EPOCHS_TABLE} ORDER BY epoch DESC LIMIT 1"
-          latest = connection.select_one(current(sql))
-          epoch = { epoch: latest ? Integer(latest["epoch"]) + 1 : 0, key_id: signer.signing_id,
+          last = latest
+          epoch = { epoch: last ? last[:epoch] + 1 : 0, key_id: signer.signing_id,
                     first_sequence: first_sequence, opened_at: Time.now.utc.floor(6) }
-          previous = latest ? latest["epoch_digest"] : genesis_digest
+          previous = last ? last[:epoch_digest] : genesis_digest
           digest = Canonical.epoch_digest(signer.signing_secret, epoch, previous_digest: previous)
           epoch.merge(epoch_digest: digest).tap { |values| insert(values) }
+        end
+
+        # The newest epoch's number and digest, or nil when no key has opened one.
+        def latest
+          sql = "SELECT epoch, epoch_digest FROM #{EPOCHS_TABLE} ORDER BY epoch DESC LIMIT 1"
+          row = connection.select_one(current(sql))
+          row && { epoch: Integer(row["epoch"]), epoch_digest: row["epoch_digest"] }
         end
 
         private

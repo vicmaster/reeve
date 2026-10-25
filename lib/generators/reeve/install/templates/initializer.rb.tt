@@ -102,3 +102,13 @@ end
 
 # The ledger itself is opt-in, so the core stays loadable without ActiveRecord.
 require "reeve/audit"
+
+# Checkpoints of the chain, kept where the database's users cannot change them,
+# catch what the chain alone cannot: the newest entries removed with the head
+# rewound, or the whole ledger deleted. Run `bin/rails reeve:checkpoint_ledger`
+# on a schedule; `reeve:verify_ledger` then checks against them. One anchor per
+# environment, on storage outside the database host — a local file protects
+# nothing:
+#
+#   Reeve.config.ledger_anchor =
+#     Reeve::Audit::FileAnchor.new("/mnt/ledger-anchor/#{Rails.env}.checkpoints")

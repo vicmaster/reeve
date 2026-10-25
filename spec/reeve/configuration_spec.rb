@@ -233,8 +233,39 @@ RSpec.describe Reeve::Configuration do
         :principal_resolver, :unguarded_tools, :audit_failure_mode, :redact_arguments,
         :max_recorded_ids, :policy_adapter, :default_action, :audit_recorder, :logger,
         :compliance_principals, :compliance_tools, :inventory, :ledger_key,
-        :retired_ledger_keys
+        :retired_ledger_keys, :ledger_anchor
       )
+    end
+  end
+
+  # specs/004 FR-006, contracts/anchoring.md "Configuration".
+  describe "#ledger_anchor=" do
+    it "has none by default" do
+      expect(config.ledger_anchor).to be_nil
+    end
+
+    it "accepts anything that can publish a checkpoint and read them back" do
+      anchor = Struct.new(:lines) do
+        def publish(line) = lines << line
+        def checkpoints = lines
+      end.new([])
+
+      config.ledger_anchor = anchor
+
+      expect(config.ledger_anchor).to equal(anchor)
+    end
+
+    it "names the method an anchor is missing" do
+      write_only = Object.new
+      def write_only.publish(_line) = nil
+
+      expect { config.ledger_anchor = write_only }
+        .to raise_error(ArgumentError, /ledger_anchor must respond to #checkpoints/)
+    end
+
+    it "can be unset" do
+      config.ledger_anchor = nil
+      expect(config.ledger_anchor).to be_nil
     end
   end
 

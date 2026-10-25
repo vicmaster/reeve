@@ -46,7 +46,7 @@ module Reeve
         # So a started chain can exist with nothing in it yet (head 0) — if the first chained
         # write then fails, say. The verifier reports that as no chain, not as a pass.
         def start!(signer)
-          return if connection.select_value("SELECT 1 FROM #{TABLE} WHERE #{named}")
+          return if started?
 
           genesis = genesis_for(signer)
           digest = Canonical.genesis_digest(signer.signing_secret, genesis)
@@ -84,6 +84,31 @@ module Reeve
 
           sql = "SELECT head_sequence FROM #{TABLE} WHERE #{named}"
           Integer(connection.select_value(Head.current(connection, sql)))
+        end
+
+        # A Checkpoint of the head and the latest epoch, read under #lock!, which a write holds
+        # while it moves the head and opens its epoch, so the two are one committed state
+        # (specs/004 FR-005, research R2). Nil when the chain has not started or holds nothing.
+        def checkpoint(signer)
+          return nil unless started?
+
+          entry_class.transaction(requires_new: true) do
+            next nil unless lock!.positive?
+
+            Checkpoint.build(state: state, epoch: Epochs.new(connection: connection).latest,
+                             keyring: signer)
+          end
+        end
+
+        # The chain record's genesis and head as one current read.
+        def state
+          sql = "SELECT genesis_digest, pre_chain_count, pre_chain_unchained_count, " \
+                "head_sequence, head_digest FROM #{TABLE} WHERE #{named}"
+          connection.select_one(Head.current(connection, sql))
+        end
+
+        def started?
+          !connection.select_value("SELECT 1 FROM #{TABLE} WHERE #{named}").nil?
         end
 
         def point_at!(digest)
