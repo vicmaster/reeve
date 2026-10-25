@@ -152,8 +152,10 @@ checkpoints: INTACT (the 0.7.0 limit, pinned). With the checkpoint: BROKEN, nami
    rewound to 500, **Then** verification is INTACT up to 500, anchored at 500, and the report
    states that the checkpoint does not cover anything after it (guarantee item 1).
 3. **Given** a checkpoint at 500, **When** entry 500's content is changed, **Then** verification
-   is BROKEN with a digest mismatch at 500 (as in 0.7.0) and the checkpoint is reported as not
-   matching.
+   is BROKEN with a digest mismatch at 500 (as in 0.7.0); the checkpoint still matches the
+   recorded digest. **When** a key holder also re-signs entry 500, **Then** the checkpoint is
+   reported as not matching (guarantee item 3). *(Corrected during build: without the key an
+   edit cannot change the recorded digest, which is what a checkpoint compares.)*
 4. **Given** checkpoints at 500 and 900 where the ledger now ends at 700 with its head rewound,
    **Then** BROKEN, naming the checkpoint at 900; the one at 500 is reported as checked.
 
@@ -362,7 +364,10 @@ covered by this run.
   and with stragglers, verifies INTACT in 100% of tests.
 - **SC-003**: No output line containing "intact" or "pass" lacks the anchoring statement
   (FR-014), in every state the specs build, text and JSON.
-- **SC-004**: Ledger write cost is unchanged from 0.7.0 (within the noise of specs/003's
+- **SC-004** *(measured 2026-10-25: met. Write median 1.91 → 1.94 ms on SQLite and 2.82 →
+  2.88 ms on PostgreSQL against 0.7.0, three interleaved rounds on one laptop, within noise; a
+  checkpoint of 1,000,000 entries took 0.7 ms on SQLite and 1.6 ms on PostgreSQL)*: Ledger
+  write cost is unchanged from 0.7.0 (within the noise of specs/003's
   measurement), and making a checkpoint of a 1,000,000-entry ledger takes under 1 second.
 - **SC-005**: A host can schedule checkpoints and verify with them from the README and the
   CHANGELOG alone (checked by a cold read).

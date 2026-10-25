@@ -67,6 +67,15 @@ RSpec.describe "reeve:install generator", if: rails_available do
       expect(initializer).to include("retired_ledger_keys")
     end
 
+    # specs/004: anchoring is shown, commented out, after the require that defines FileAnchor.
+    it "shows the anchor line, after the ledger is required" do
+      initializer = read("config/initializers/reeve.rb")
+
+      expect(initializer).to match(/^#\s+Reeve\.config\.ledger_anchor =$/)
+      expect(initializer.index("ledger_anchor")).to be > initializer.index('require "reeve/audit"')
+      expect(initializer).to include("reeve:checkpoint_ledger")
+    end
+
     it "embeds no key value" do
       initializer = read("config/initializers/reeve.rb")
 

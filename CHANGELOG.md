@@ -4,6 +4,63 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
+## [Unreleased]
+
+The chain's own records live in the same database as the entries, so two kinds of tampering
+went unseen: deleting the newest entries and rewinding the head to match, and deleting the
+whole ledger, which read as "no chain". A new epoch nobody had written under yet could also
+be deleted without trace. Now reeve can make a **checkpoint**, one signed line saying how far
+the chain reached, and hand it to an **anchor**: storage you choose, outside the database.
+Verification checks the ledger against every checkpoint.
+
+**No migration, and no contract change.** The audit-entry contract stays `4`. Nothing
+changes for a ledger write.
+
+### Added
+
+- `bin/rails reeve:checkpoint_ledger` (`Reeve::Tasks.checkpoint_ledger`,
+  `Reeve::Audit::Chain.checkpoint!`): makes a checkpoint, publishes it, and prints it. Exit `0`
+  made, `1` refused (no key, no chain yet) or the anchor failed; the line is printed either way
+  so it can be stored by hand.
+- `config.ledger_anchor`: any object with `publish(line)` and `checkpoints`. reeve ships
+  `Reeve::Audit::FileAnchor`, a file it only ever appends to. It is a building block: on the
+  database host it protects nothing. Point it at storage the database's users cannot change,
+  such as a mount backed by an object-locked bucket, and use one per environment.
+- `reeve:verify_ledger` checks against the anchor's checkpoints when one is configured.
+  `CHECKPOINTS=path` reads a file of checkpoint lines instead, `CHECKPOINTS=` (empty) uses
+  none, and `FROM=latest` walks only what came after the newest checkpoint. A checkpoint line
+  that does not read is exit `2`, naming its position.
+- New breaks, all exit `1`: `checkpoint_not_reached`, `checkpoint_mismatch`,
+  `checkpoint_altered`. A checkpoint signed by a key not configured is unverifiable (exit `2`).
+  With a checkpoint, an emptied ledger is BROKEN, not NO CHAIN.
+- `reeve:rotate_ledger_key` makes a checkpoint after opening an epoch when an anchor is
+  configured, so the new epoch is pinned before anything is written under it.
+- `Reeve::Checks::LedgerChain.new(anchored: true)`: also makes a checkpoint, reads it back
+  from the anchor and verifies against it. Run it as a test of its own (the README shows how);
+  the suite's own `LedgerChain` never reads the anchor, since checkpoints earlier runs left
+  name test databases that are gone.
+
+### Changed
+
+- **Every summary line that follows a walk now ends with its anchoring**: `; not anchored`,
+  or `; anchored at #48,000 (checkpoint 2026-10-25 14:00 UTC), 211 entries after it`. This
+  applies whether or not you configure an anchor. If something reads the text report, read
+  `FORMAT=json` instead; its existing keys are unchanged, and it gains `checkpoints`,
+  `anchored_at`, `beyond_anchor`, `walked_from` and `breaks[].checkpoint`.
+
+### Limits, stated plainly
+
+- Entries written after the latest checkpoint can still be removed without trace. The summary
+  line counts the entries still there after it, not ones deleted; how often you checkpoint is
+  the size of that window.
+- A checkpoint is only as safe as its store. One an attacker can delete or overwrite protects
+  nothing, and reeve cannot make a store append-only.
+- A leaked key can still rewrite the chain from any point, but not a checkpoint made before
+  the leak: rewriting an entry it saw changes the digest it names.
+- Restoring a backup older than a checkpoint reads as BROKEN, because the restored ledger lost
+  entries that checkpoint saw. A database reset on purpose needs a new anchor file.
+- A checkpoint's time is the producing host's clock, for people. Verification never uses it.
+
 ## [0.7.0] - 2026-10-23
 
 0.6.0 let a ledger be verified across a key rotation, provided the old key was kept as a
