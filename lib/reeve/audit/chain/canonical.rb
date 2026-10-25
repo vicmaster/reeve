@@ -59,7 +59,8 @@ module Reeve
           head_sequence head_digest epoch epoch_digest key_id made_at reeve_version
         ].freeze
 
-        TIME_FIELDS = %w[occurred_at genesis_at opened_at].freeze
+        # `purged_at` is a retention record's (Retention::Digest).
+        TIME_FIELDS = %w[occurred_at genesis_at opened_at purged_at].freeze
 
         module_function
 

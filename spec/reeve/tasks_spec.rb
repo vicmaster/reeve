@@ -291,3 +291,75 @@ RSpec.describe "reeve:checkpoint_ledger" do
     Rake.application = Rake::Application.new
   end
 end
+
+# specs/005 FR-001–FR-003, contracts/retention.md "Rake".
+RSpec.describe "reeve:purge_ledger" do
+  let(:chain) { Reeve::Audit::Chain.new(entry_class: Reeve::Audit::Entry) }
+  let(:out) { StringIO.new }
+
+  around do |example|
+    Dir.mktmpdir("reeve-purge") do |dir|
+      @archive = File.join(dir, "ledger.jsonl")
+      example.run
+    end
+  end
+
+  before do
+    Ledger.prepare!
+    Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new
+    Reeve.config.ledger_retention_connection = Ledger.retention_connection
+    20.times do |index|
+      chain.append!(invocation_id: SecureRandom.uuid, occurred_at: Time.now, agent_id: "a", tool_name: "t",
+                    arguments: {}, outcome: "allow", rule: "r", record_ids: [], guard: "policy",
+                    contract_version: Reeve::Audit::CONTRACT_VERSION)
+      Reeve::Audit::Chain.checkpoint! if ((index + 1) % 10).zero?
+    end
+  end
+
+  def purge(env)
+    Reeve::Tasks.purge_ledger(env: env, out: out)
+  end
+
+  it "dry-runs without CONFIRM, exiting 0 and removing nothing" do
+    expect(purge("THROUGH" => "10", "ARCHIVE" => @archive)).to eq(0)
+    expect(out.string).to start_with("reeve ledger purge: WOULD PURGE")
+    expect(Reeve::Audit::Entry.count).to eq(20)
+  end
+
+  it "purges with CONFIRM=1, exiting 0" do
+    expect(purge("THROUGH" => "10", "ARCHIVE" => @archive, "CONFIRM" => "1")).to eq(0)
+    expect(out.string).to start_with("reeve ledger purge: PURGED — sequences 1–10")
+    expect(Reeve::Audit::Entry.count).to eq(10)
+  end
+
+  it "exits 1 when it refuses" do
+    expect(purge("THROUGH" => "15", "ARCHIVE" => @archive, "CONFIRM" => "1")).to eq(1)
+    expect(out.string).to start_with("reeve ledger purge: REFUSED")
+  end
+
+  it "accepts OLDER_THAN in days" do
+    expect(purge("OLDER_THAN" => "365d", "ARCHIVE" => @archive)).to eq(0)
+    expect(out.string).to start_with("reeve ledger purge: NOTHING TO PURGE")
+  end
+
+  # specs/005 FR-012.
+  it "verifies the archive it wrote with reeve:verify_archive, exiting as verify_ledger does" do
+    purge("THROUGH" => "10", "ARCHIVE" => @archive, "CONFIRM" => "1")
+    archive_out = StringIO.new
+
+    expect(Reeve::Tasks.verify_archive(env: { "ARCHIVE" => @archive }, out: archive_out)).to eq(0)
+    expect(archive_out.string).to start_with("reeve archive: INTACT — sequences 1–10 verified")
+
+    File.write(@archive, File.read(@archive).sub('"tool_name":"t"', '"tool_name":"x"'))
+    expect(Reeve::Tasks.verify_archive(env: { "ARCHIVE" => @archive }, out: StringIO.new)).to eq(1)
+    expect { Reeve::Tasks.verify_archive(env: {}, out: StringIO.new) }.to raise_error(ArgumentError, /ARCHIVE/)
+  end
+
+  it "names the accepted values for anything else" do
+    expect { purge("THROUGH" => "ten", "ARCHIVE" => @archive) }.to raise_error(ArgumentError, /THROUGH/)
+    expect { purge("OLDER_THAN" => "1y", "ARCHIVE" => @archive) }.to raise_error(ArgumentError, /365d/)
+    expect { purge("THROUGH" => "10", "ARCHIVE" => @archive, "CONFIRM" => "yes") }.to raise_error(ArgumentError, /CONFIRM/)
+    expect { purge("THROUGH" => "10", "ARCHIVE" => @archive, "NO_ARCHIVE" => "1") }.to raise_error(ArgumentError, /not both/)
+    expect { purge("ARCHIVE" => @archive) }.to raise_error(ArgumentError, /exactly one/)
+  end
+end

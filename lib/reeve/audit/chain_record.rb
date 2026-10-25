@@ -50,13 +50,14 @@ module Reeve
       # refusing, with the fix, is the honest answer.
       def self.require_same_database!(entry_class)
         ledger_database = entry_class.connection_db_config.configuration_hash
-        [self, ChainEpoch].each do |model|
+        [self, ChainEpoch, RetentionRecord].each do |model|
           next if model.connection_db_config.configuration_hash == ledger_database
 
           short = model.name.split("::").last
           raise ConfigurationError,
                 "#{model.name} is connected to a different database than #{entry_class.name}. " \
-                "Connect ChainRecord and ChainEpoch the same way as the ledger (for example " \
+                "Connect ChainRecord, ChainEpoch and RetentionRecord the same way as the ledger " \
+                "(for example " \
                 "with the same connects_to) so the chain is read where it is written; #{short} " \
                 "is the one that is not."
         end

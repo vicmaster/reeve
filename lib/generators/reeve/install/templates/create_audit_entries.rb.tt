@@ -19,6 +19,15 @@
 #   -- the key epochs: written once each, never updated
 #   GRANT INSERT, SELECT ON reeve_audit_chain_epochs TO app_role;
 #   GRANT USAGE  ON SEQUENCE reeve_audit_chain_epochs_id_seq TO app_role;
+#   -- retention records: the application only reads them
+#   GRANT SELECT ON reeve_audit_retentions TO app_role;
+#
+#   -- the retention role, used only by `bin/rails reeve:purge_ledger`
+#   GRANT SELECT ON reeve_audit_entries, reeve_audit_chains, reeve_audit_chain_epochs,
+#                   reeve_audit_retentions TO retention_role;
+#   GRANT DELETE ON reeve_audit_entries TO retention_role;
+#   GRANT INSERT ON reeve_audit_retentions TO retention_role;
+#   GRANT USAGE  ON SEQUENCE reeve_audit_retentions_id_seq TO retention_role;
 #
 # Every row is chained to the one before it with a keyed digest, and names the key epoch
 # that signed it (audit-entry contract 4),
@@ -30,10 +39,10 @@
 # reeve_audit_chains; that role needs UPDATE there, which is why the chain table is
 # granted separately from the ledger.
 #
-# Also explicitly out of scope for now, so you can plan around it:
-#   * no retention, rotation or archival — this table grows until you prune it, and
-#     pruning is your policy, run by a role that is allowed to delete. Deleting rows
-#     breaks the chain by design.
+# The table grows until you purge it. Deleting rows by hand breaks the chain by design and
+# is reported as tampering; `bin/rails reeve:purge_ledger` removes the oldest entries up to
+# a checkpoint, archives them, and leaves a signed record in reeve_audit_retentions so the
+# rest still verifies. It runs on the retention role above, never the application's.
 #
 # `invocation_id` is a UUID stored as a string rather than a native `uuid` column,
 # because reeve supports every database ActiveRecord does and only PostgreSQL has the
@@ -133,5 +142,21 @@ class CreateReeveAuditEntries < ActiveRecord::Migration[7.0]
 
     add_index :reeve_audit_chain_epochs, :epoch, unique: true
     add_index :reeve_audit_chain_epochs, :key_id, unique: true
+
+    create_table :reeve_audit_retentions do |t|
+      t.integer  :purge_number,      null: false
+      t.bigint   :through_sequence,  null: false
+      t.string   :through_digest,    null: false, limit: 64
+      t.bigint   :previous_through,  null: false
+      t.bigint   :removed_chained,   null: false
+      t.bigint   :removed_pre_chain, null: false
+      t.boolean  :archived,          null: false
+      t.string   :archive_sha256,    limit: 64
+      t.datetime :purged_at,         null: false, precision: 6
+      t.string   :key_id,            null: false, limit: 16
+      t.string   :retention_digest,  null: false, limit: 64
+    end
+
+    add_index :reeve_audit_retentions, :purge_number, unique: true
   end
 end

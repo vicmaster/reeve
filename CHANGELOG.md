@@ -13,8 +13,8 @@ be deleted without trace. Now reeve can make a **checkpoint**, one signed line s
 the chain reached, and hand it to an **anchor**: storage you choose, outside the database.
 Verification checks the ledger against every checkpoint.
 
-**No migration, and no contract change.** The audit-entry contract stays `4`. Nothing
-changes for a ledger write.
+**No contract change.** The audit-entry contract stays `4`. Nothing changes for a ledger
+write. (Retention, below, adds one table.)
 
 ### Added
 
@@ -60,6 +60,46 @@ changes for a ledger write.
 - Restoring a backup older than a checkpoint reads as BROKEN, because the restored ledger lost
   entries that checkpoint saw. A database reset on purpose needs a new anchor file.
 - A checkpoint's time is the producing host's clock, for people. Verification never uses it.
+
+### Retention
+
+The ledger could only grow, and deleting old rows by hand broke the chain and read as
+tampering. Now `bin/rails reeve:purge_ledger` removes the oldest entries up to a checkpoint
+your anchor holds, writes an archive of them first, and leaves a signed **retention record**, so
+the rest still verifies and the purge reads as a purge.
+
+**One migration, no contract change.** `bin/rails generate reeve:upgrade` adds the table
+`reeve_audit_retentions`; the audit-entry contract stays `4`. Grant the application's role
+`SELECT` on it. Nothing is purged until you run the task.
+
+**The constitution's append-only rule now has one exception** (1.1.0): application code still
+cannot update or delete an entry; only this operator-run purge can, and only behind a verified,
+anchored checkpoint, on a database role the application does not use, after writing a signed
+record.
+
+- `config.ledger_retention_connection`: an abstract ActiveRecord class connected to the ledger's
+  database as a role with `DELETE`; the purge refuses another database, or the application's
+  own user (SQLite has no roles, so there it warns).
+- `bin/rails reeve:purge_ledger`: `OLDER_THAN=365d` or `THROUGH=sequence`; exactly one of
+  `ARCHIVE=path` (a new file each run) and `NO_ARCHIVE=1`; nothing removed without `CONFIRM=1`.
+  Exit `0` for a dry run, a purge, or nothing to purge (the first line says which); `1` refused,
+  with the reason and the fix. It requires the whole ledger to verify INTACT first. A purge
+  stopped midway leaves rows "awaiting purge" (INTACT, not a break); any rerun finishes it first.
+  The README shows the role, the grants and the `database.yml` entry.
+- `bin/rails reeve:verify_archive ARCHIVE=path`: verifies an archive on its own, from its start to
+  its boundary checkpoint. It needs the application (for the table's column types), not the
+  purged rows.
+- Verification starts after the latest purge, names the purged range on every summary line,
+  reports checkpoints older than it as purged, and gains `retention_altered` (BROKEN) and the JSON
+  keys `retention` and `awaiting_purge`.
+
+Keep every ledger key: epoch and retention records stay in the ledger and are checked under
+their own keys, and archives need the keys of the rows they hold.
+
+Limits, in plain words: what a purge removed without an archive is gone for good, and the record
+proves only that it existed and verified. An archive is a file you must keep safe, as you do the
+anchor. A row edited inside the purged range while the purge runs is not reported by the ledger,
+because it is being removed; the archive holds what was read.
 
 ## [0.7.0] - 2026-10-23
 

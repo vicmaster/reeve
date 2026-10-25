@@ -233,7 +233,7 @@ RSpec.describe Reeve::Configuration do
         :principal_resolver, :unguarded_tools, :audit_failure_mode, :redact_arguments,
         :max_recorded_ids, :policy_adapter, :default_action, :audit_recorder, :logger,
         :compliance_principals, :compliance_tools, :inventory, :ledger_key,
-        :retired_ledger_keys, :ledger_anchor
+        :retired_ledger_keys, :ledger_anchor, :ledger_retention_connection
       )
     end
   end
@@ -266,6 +266,29 @@ RSpec.describe Reeve::Configuration do
     it "can be unset" do
       config.ledger_anchor = nil
       expect(config.ledger_anchor).to be_nil
+    end
+  end
+
+  # specs/005 FR-006, contracts/retention.md "Configuration".
+  describe "#ledger_retention_connection=" do
+    it "has none by default" do
+      expect(config.ledger_retention_connection).to be_nil
+    end
+
+    it "accepts a class that has a connection of its own" do
+      retention = Class.new do
+        def self.connection_pool = nil
+        def self.connection_db_config = nil
+      end
+
+      config.ledger_retention_connection = retention
+
+      expect(config.ledger_retention_connection).to equal(retention)
+    end
+
+    it "names what a connection is missing" do
+      expect { config.ledger_retention_connection = Object }
+        .to raise_error(ArgumentError, /ledger_retention_connection must respond to #connection_pool/)
     end
   end
 

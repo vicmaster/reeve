@@ -59,6 +59,7 @@ module Reeve
         # during the run is never mistaken for one placed beyond the head.
         def verify_chain(record)
           epochs = EpochRules.read(keyring: keyring, entry_class: entry_class)
+          retention = check_retention(record)
           failed = anchoring.failed_start(record, epochs.records, report: method(:add))
           return unwalked(record: record, checkpoints: failed) if failed
 
@@ -67,7 +68,25 @@ module Reeve
           anchored = anchoring.check(record, head_at_end || record, epochs.records,
                                      report: method(:add))
 
-          result(record, head_at_end, walk.last_sequence, epochs, anchored)
+          result(record, head_at_end, walk.last_sequence, epochs,
+                 **anchored, retention: retention, awaiting_purge: awaiting_purge)
+        end
+
+        # The purges, if any (specs/005): the latest that holds is where the walk starts.
+        def check_retention(record)
+          records = Retention::Records.read(entry_class: entry_class)
+          return nil if records.empty?
+
+          checked = Retention::Check.new(keyring: keyring, report: method(:add))
+                                    .call(records, genesis_digest: record&.genesis_digest)
+          anchoring.floor = checked.boundary
+          checked
+        end
+
+        # Rows still at or below the boundary: a purge stopped midway, or a restore (FR-010).
+        def awaiting_purge
+          floor = anchoring.floor
+          floor ? entry_class.where("chain_sequence <= ?", floor.through_sequence).count : 0
         end
 
         # The chain record, rows past the head, unchained rows and the epochs, each checked
@@ -148,16 +167,16 @@ module Reeve
         # `epoch` names the key epoch, and `checkpoint` the checkpoint, a break is about when it has
         # no sequence (specs/003, specs/004).
         def add(kind, sequence, detail = nil, invocation_id = nil, key_id = nil, epoch: nil,
-                checkpoint: nil)
+                checkpoint: nil, retention: nil)
           found = { kind: kind, sequence: sequence, detail: detail, invocation_id: invocation_id }
           breaks << Verification::Break.new(**found, key_id: key_id, epoch: epoch,
-                                                     checkpoint: checkpoint)
+                                                     checkpoint: checkpoint, retention: retention)
         end
 
-        def result(record, head_at_end, last_sequence, epochs, anchored)
+        def result(record, head_at_end, last_sequence, epochs, **found)
           Verification.new(
             status: Verification.status_for(breaks), breaks: breaks,
-            covered: covered(record, last_sequence), walked_from: anchoring.from, **anchored,
+            covered: covered(record, last_sequence), walked_from: anchoring.from, **found,
             epochs: epochs.summaries, before_first_epoch: epochs.before_first_epoch,
             head_at_start: record&.head_sequence, head_at_end: head_at_end&.head_sequence,
             uncovered_now: count_uncovered, uncovered_at_genesis: record&.pre_chain_count,

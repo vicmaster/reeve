@@ -412,6 +412,20 @@ RSpec.describe Reeve::Checks, :reeve_fixtures do
       end
     end
 
+    # specs/005 FR-013: a purge is not a break, and the message says what was purged.
+    it "passes on a purged ledger, naming the purged range" do
+      Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new
+      Reeve.config.ledger_retention_connection = Ledger.retention_connection
+      chained!(4)
+      Reeve::Audit::Chain.checkpoint!
+      Reeve::Audit::Chain.purge!(through: 4, no_archive: true, confirm: true)
+
+      result = check.call
+
+      expect(result).to be_passed
+      expect(result.message).to include("1–4 purged (retention record 0, ")
+    end
+
     it "is skipped, saying the chain was not verified, when there are no compliance tools" do
       result = described_class.new(tools: [], principals: [alice]).call
 

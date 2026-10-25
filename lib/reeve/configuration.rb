@@ -25,7 +25,7 @@ module Reeve
       principal_resolver unguarded_tools audit_failure_mode redact_arguments
       max_recorded_ids policy_adapter default_action audit_recorder logger
       compliance_principals compliance_tools inventory ledger_key retired_ledger_keys
-      ledger_anchor
+      ledger_anchor ledger_retention_connection
     ].freeze
 
     # Shown by #to_h and #inspect as fingerprints. A configuration object gets printed —
@@ -50,6 +50,7 @@ module Reeve
       @ledger_key = nil
       @retired_ledger_keys = []
       @ledger_anchor = nil
+      @ledger_retention_connection = nil
     end
 
     # The key that signs the audit ledger's chain (specs/002). Held in configuration, never
@@ -212,6 +213,19 @@ module Reeve
     def ledger_anchor=(anchor)
       @ledger_anchor =
         anchor.nil? ? nil : require_protocol!(:ledger_anchor, anchor, %i[publish checkpoints])
+    end
+
+    # The database connection `bin/rails reeve:purge_ledger` deletes through (specs/005): an
+    # abstract ActiveRecord class the host connects to the ledger's database under a role of
+    # its own, the only one with DELETE on the ledger. Never the application's connection.
+    def ledger_retention_connection=(retention)
+      @ledger_retention_connection =
+        if retention.nil?
+          nil
+        else
+          require_protocol!(:ledger_retention_connection, retention,
+                            %i[connection_pool connection_db_config])
+        end
     end
 
     def logger=(logger)

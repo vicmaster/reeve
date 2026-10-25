@@ -135,6 +135,46 @@ RSpec.describe "a verification's report" do
       end
     end
 
+    # specs/005 FR-011, contracts/retention.md "Verification".
+    context "after a purge" do
+      let(:summary) { Reeve::Audit::Chain::Retention::Check::Summary }
+      let(:boundary) do
+        Struct.new(:purge_number, :through_sequence, :purged_at).new(0, 6_000, Time.utc(2025, 11, 1, 3, 0, 0))
+      end
+
+      def retention(removed_pre_chain: 5_000)
+        found = summary.new(purge: 0, through_sequence: 6_000, purged_at: boundary.purged_at,
+                            removed_chained: 6_000, removed_pre_chain: removed_pre_chain, archived: true,
+                            status: :verified)
+        Reeve::Audit::Chain::Retention::Check::Result.new(boundary: boundary, summaries: [found])
+      end
+
+      it "names the purged range and the record before the coverage, and the pre-chain rows purged" do
+        result = verification.new(status: :intact, covered: 6_001..10_000, head_at_start: 10_000,
+                                  head_at_end: 10_000, uncovered_now: 0, uncovered_at_genesis: 5_000,
+                                  retention: retention)
+
+        expect(result.to_s).to eq(
+          "reeve ledger: INTACT — sequences 6,001–10,000 verified (head at start: 10,000); " \
+          "1–6,000 purged (retention record 0, 2025-11-01); 0 earlier entries not covered " \
+          "(5,000 when the chain started, 5,000 purged); not anchored"
+        )
+      end
+
+      it "counts rows still awaiting purge" do
+        result = verification.new(status: :intact, covered: 6_001..10_000, head_at_start: 10_000,
+                                  retention: retention(removed_pre_chain: 0), awaiting_purge: 120)
+
+        expect(result.to_s).to include("1–6,000 purged (retention record 0, 2025-11-01); 120 entries awaiting purge;")
+      end
+
+      it "says there was nothing after the purge to verify" do
+        result = verification.new(status: :intact, head_at_start: 6_000, retention: retention(removed_pre_chain: 0))
+
+        expect(result.to_s).to start_with("reeve ledger: INTACT — no entries after the purge to verify (head at start: 6,000); 1–6,000 purged")
+      end
+    end
+
     it "states that nothing was verified without a key" do
       result = verification.new(status: :unverifiable, reason: :no_key, uncovered_now: 3)
 
@@ -188,14 +228,17 @@ RSpec.describe "a verification's report" do
       expect(json.keys).to contain_exactly(
         "status", "covered", "head_at_start", "head_at_end", "uncovered_now", "uncovered_at_genesis",
         "unchained_now", "unchained_at_genesis", "unverifiable_count", "totals", "breaks", "reason",
-        "epochs", "before_first_epoch", "checkpoints", "anchored_at", "beyond_anchor", "walked_from"
+        "epochs", "before_first_epoch", "checkpoints", "anchored_at", "beyond_anchor", "walked_from",
+        "retention", "awaiting_purge"
       )
       expect(json["status"]).to eq("broken")
       expect(json["covered"]).to eq("first" => 1, "last" => 9)
       expect(json["breaks"]).to eq([{ "kind" => "missing", "sequence" => { "first" => 3, "last" => 4 },
                                       "detail" => "2 entries not found", "invocation_id" => nil,
-                                      "key_id" => nil, "epoch" => nil, "checkpoint" => nil }])
-      expect(json.values_at("checkpoints", "anchored_at", "beyond_anchor", "walked_from")).to eq([[], nil, nil, nil])
+                                      "key_id" => nil, "epoch" => nil, "checkpoint" => nil,
+                                      "retention" => nil }])
+      expect(json.values_at("checkpoints", "anchored_at", "beyond_anchor", "walked_from", "retention",
+                            "awaiting_purge")).to eq([[], nil, nil, nil, nil, 0])
     end
 
     it "carries each checkpoint's result and where the run was anchored" do
@@ -271,6 +314,14 @@ RSpec.describe "a verification's report" do
         2.times { chain.append!(row) }
         Reeve::Audit::Chain.checkpoint!
         Ledger.empty!
+      },
+      "intact, purged" => lambda {
+        Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new
+        Reeve.config.ledger_retention_connection = Ledger.retention_connection
+        4.times { chain.append!(row) }
+        Reeve::Audit::Chain.checkpoint!
+        chain.append!(row)
+        Reeve::Audit::Chain.purge!(through: 4, no_archive: true, confirm: true)
       },
       "unverifiable for want of a checkpoint's key" => lambda {
         Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new

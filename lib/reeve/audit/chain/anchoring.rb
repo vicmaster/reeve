@@ -23,20 +23,35 @@ module Reeve
           checkpoints.any?
         end
 
+        # The latest retention record that holds (specs/005), or nil: the walk never starts
+        # below it, and a `from` at or below it is moot.
+        attr_reader :floor
+
+        def floor=(record)
+          @floor = record
+          @from = nil if record && from && from.head_sequence <= record.through_sequence
+        end
+
         # Where the walk starts, and the digest its first row links to.
         def start
-          from ? from.head_sequence : 0
+          return from.head_sequence if from
+          return floor.through_sequence if floor
+
+          0
         end
 
         def link(record)
-          from ? from.head_digest : record&.genesis_digest
+          return from.head_digest if from
+          return floor.through_digest if floor
+
+          record&.genesis_digest
         end
 
         # Every checkpoint, after the walk, against the head read after it. The checked
         # checkpoint with the highest sequence anchors the run (data-model).
         def check(record, head, epoch_records, report:)
           results = check_with(report).call(checkpoints, record: record, head: head,
-                                                         epochs: epoch_records)
+                                                         epochs: epoch_records, floor: floor)
           anchor = results.select { |found| found.status == :checked }.max_by(&:head_sequence)
           beyond = anchor && record && [record.head_sequence - anchor.head_sequence, 0].max
           { checkpoints: results, anchored_at: anchor, beyond_anchor: beyond }
@@ -58,7 +73,7 @@ module Reeve
           found = []
           collect = ->(*args, **options) { found << [args, options] }
           results = check_with(collect).call([from], record: record, head: record,
-                                                     epochs: epoch_records)
+                                                     epochs: epoch_records, floor: floor)
           return nil if results.first.status == :checked
 
           found.each { |args, options| report.call(*args, **options) }

@@ -38,13 +38,24 @@ module Reeve
         The application role needs INSERT and SELECT on reeve_audit_chain_epochs.
       EPOCHS
 
-      BY_CONTRACT = { 3 => CHAIN, 4 => EPOCHS }.freeze
+      # Retention changes nothing until the host runs a purge, but the purge needs a role the
+      # application does not have, and the host should hear that before it needs one.
+      RETENTION = <<~RETENTION
+
+        The ledger can now be purged (reeve_audit_retentions): bin/rails reeve:purge_ledger
+        removes the oldest entries up to a checkpoint and records the purge, so the rest still
+        verifies. Nothing is purged until you run it. The application role needs SELECT on
+        the new table; the purge runs on a retention role of its own (see the migration).
+      RETENTION
+
+      # Keyed by the step's note, or by its contract when it has none.
+      BY_STEP = { 3 => CHAIN, 4 => EPOCHS, retention: RETENTION }.freeze
 
       module_function
 
-      # The notes for the contracts just written, oldest first.
-      def for(contracts)
-        contracts.filter_map { |contract| BY_CONTRACT[contract] }.join
+      # The notes for the steps just written, oldest first.
+      def for(steps)
+        steps.filter_map { |step| BY_STEP[step.fetch(:note, step[:contract])] }.join
       end
     end
   end

@@ -127,6 +127,7 @@ RSpec.describe "reeve:install generator", if: rails_available do
       connection.drop_table(:reeve_audit_entries, if_exists: true)
       connection.drop_table(:reeve_audit_chains, if_exists: true)
       connection.drop_table(:reeve_audit_chain_epochs, if_exists: true)
+      connection.drop_table(:reeve_audit_retentions, if_exists: true)
 
       CreateReeveAuditEntries.new.migrate(:up)
 
@@ -142,6 +143,7 @@ RSpec.describe "reeve:install generator", if: rails_available do
       connection.drop_table(:reeve_audit_entries, if_exists: true)
       connection.drop_table(:reeve_audit_chains, if_exists: true)
       connection.drop_table(:reeve_audit_chain_epochs, if_exists: true)
+      connection.drop_table(:reeve_audit_retentions, if_exists: true)
 
       CreateReeveAuditEntries.new.migrate(:up)
       CreateReeveAuditEntries.new.migrate(:down)
