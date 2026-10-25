@@ -23,6 +23,11 @@ module Reeve
     #
     # LIMIT caps the breaks listed in the text report (default 100; the totals are never
     # capped). FORMAT=json writes the whole result, every break, and ignores LIMIT.
+    #
+    # Checks the ledger against config.ledger_anchor's checkpoints, if one is configured
+    # (specs/004). CHECKPOINTS=path reads them from a file of checkpoint lines instead, and
+    # CHECKPOINTS= (empty) verifies without any. A checkpoint that cannot be read is exit 2.
+    # FROM=latest walks from the highest checkpoint instead of the genesis.
     def verify_ledger(env: ENV, out: $stdout)
       format = env.fetch("FORMAT", "text")
       unless FORMATS.include?(format)
@@ -31,9 +36,12 @@ module Reeve
 
       limit = limit_from(env)
       require "reeve/audit"
-      result = Reeve::Audit::Chain.verify
+      result = Reeve::Audit::Chain.verify(checkpoints: checkpoints_from(env), from: from_env(env))
       out.puts(format == "json" ? JSON.generate(result.as_json) : result.to_s(limit: limit))
       EXIT.fetch(result.status)
+    rescue Reeve::CheckpointError => e
+      out.puts("reeve ledger: #{e.message}; nothing was verified")
+      EXIT.fetch(:unverifiable)
     end
 
     # Makes the configured ledger key the latest epoch's key (specs/003, contracts/
@@ -47,7 +55,48 @@ module Reeve
       require "reeve/audit"
       rotation = Reeve::Audit::Chain.rotate_key!(accept_unverifiable: accept)
       out.puts(rotation.to_s)
-      ROTATE_EXIT.fetch(rotation.status)
+      status = ROTATE_EXIT.fetch(rotation.status)
+      return status unless rotation.rotated? && Reeve.config.ledger_anchor
+
+      checkpoint_after_rotation(out)
+    end
+
+    # Pins the epoch just opened, which no entry names yet (specs/004 FR-008). A failed anchor
+    # fails the task but does not undo the rotation: the epoch is open either way.
+    def checkpoint_after_rotation(out)
+      result = Reeve::Audit::Chain.checkpoint!
+      out.puts(result.to_s)
+      result.made? && !result.anchor_failed? ? 0 : 1
+    end
+
+    # Makes a checkpoint of the ledger's chain and hands it to config.ledger_anchor (specs/004,
+    # contracts/anchoring.md), writes what happened and the checkpoint's line to `out`, and
+    # returns the exit status: 0 made (and published, if there is an anchor), 1 refused or the
+    # anchor failed. The line is printed either way, so a failed store does not lose it.
+    def checkpoint_ledger(env: ENV, out: $stdout)
+      require "reeve/audit"
+      result = Reeve::Audit::Chain.checkpoint!
+      out.puts(result.to_s)
+      result.made? && !result.anchor_failed? ? 0 : 1
+    end
+
+    def from_env(env)
+      raw = env.fetch("FROM", "")
+      return nil if raw.empty?
+      return :latest if raw == "latest"
+
+      raise ArgumentError, "FROM must be latest or unset, got #{raw.inspect}"
+    end
+
+    # nil (the configured anchor's) unless CHECKPOINTS is set.
+    def checkpoints_from(env)
+      return nil unless env.key?("CHECKPOINTS")
+
+      path = env["CHECKPOINTS"].to_s
+      return [] if path.empty?
+      raise Reeve::CheckpointError, "no checkpoint file at #{path}" unless File.file?(path)
+
+      Reeve::Audit::FileAnchor.new(path).checkpoints
     end
 
     def accept_unverifiable_from(env)
@@ -77,6 +126,12 @@ module Reeve
                "(exit 0 intact, 1 broken, 2 could not verify; LIMIT=, FORMAT=json)"
           task verify_ledger: :environment do
             exit Reeve::Tasks.verify_ledger
+          end
+
+          desc "Checkpoint the audit ledger's chain to config.ledger_anchor " \
+               "(exit 0 made, 1 refused or the anchor failed)"
+          task checkpoint_ledger: :environment do
+            exit Reeve::Tasks.checkpoint_ledger
           end
 
           desc "Make config.ledger_key the ledger's current key epoch (exit 0 rotated or " \

@@ -25,6 +25,7 @@ module Reeve
       principal_resolver unguarded_tools audit_failure_mode redact_arguments
       max_recorded_ids policy_adapter default_action audit_recorder logger
       compliance_principals compliance_tools inventory ledger_key retired_ledger_keys
+      ledger_anchor
     ].freeze
 
     # Shown by #to_h and #inspect as fingerprints. A configuration object gets printed —
@@ -48,6 +49,7 @@ module Reeve
       @inventory = nil
       @ledger_key = nil
       @retired_ledger_keys = []
+      @ledger_anchor = nil
     end
 
     # The key that signs the audit ledger's chain (specs/002). Held in configuration, never
@@ -201,6 +203,15 @@ module Reeve
     def audit_recorder=(recorder)
       @audit_recorder =
         recorder.nil? ? nil : require_protocol!(:audit_recorder, recorder, [:record])
+    end
+
+    # Where ledger checkpoints are kept (specs/004): an object with #publish(line) and
+    # #checkpoints, such as Reeve::Audit::FileAnchor. It must be storage the database's users
+    # cannot change; nil (the default) means checkpoints are made only on request and stored by
+    # whoever asked.
+    def ledger_anchor=(anchor)
+      @ledger_anchor =
+        anchor.nil? ? nil : require_protocol!(:ledger_anchor, anchor, %i[publish checkpoints])
     end
 
     def logger=(logger)

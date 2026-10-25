@@ -80,6 +80,34 @@ module Ledger
       scratch.delete_all
     end
 
+    # Tampering as someone with database access and no key would do it (specs/004): raw SQL,
+    # past every model guard.
+    #
+    # Removes every entry after `after` and rewinds the head to the entry left, so what
+    # remains is a shorter chain that verifies on its own.
+    def truncate_tail!(after:)
+      connection = ActiveRecord::Base.connection
+      connection.delete("DELETE FROM #{Reeve::Audit::Entry.table_name} WHERE chain_sequence > #{Integer(after)}")
+      digest = if after.zero?
+                 connection.select_value("SELECT genesis_digest FROM reeve_audit_chains")
+               else
+                 connection.select_value("SELECT chain_digest FROM #{Reeve::Audit::Entry.table_name} " \
+                                         "WHERE chain_sequence = #{Integer(after)}")
+               end
+      connection.update("UPDATE reeve_audit_chains SET head_sequence = #{Integer(after)}, " \
+                        "head_digest = #{connection.quote(digest)}")
+    end
+
+    # Every entry, the chain record and every epoch: the whole ledger, gone.
+    def empty!
+      connection = ActiveRecord::Base.connection
+      [Reeve::Audit::Entry.table_name, *CHAIN_TABLES].each { |table| connection.delete("DELETE FROM #{table}") }
+    end
+
+    def delete_epoch!(number)
+      ActiveRecord::Base.connection.delete("DELETE FROM reeve_audit_chain_epochs WHERE epoch = #{Integer(number)}")
+    end
+
     # A throwaway table standing in for the host's own data, so a spec about a tool that
     # rolls its work back can assert the rollback happened rather than assume it.
     def scratch
@@ -116,6 +144,29 @@ end
 # exercise the missing-key path unset it themselves.
 module Ledger
   TEST_KEY = "reeve-spec-ledger-key-not-a-secret-0123456789"
+end
+
+# An anchor for specs (specs/004): keeps the lines it is given, in memory, and raises when told
+# to, so a spec can watch what was published without a file.
+module Ledger
+  class RecordingAnchor
+    attr_reader :lines
+
+    def initialize(error: nil)
+      @lines = []
+      @error = error
+    end
+
+    def publish(line)
+      raise @error if @error
+
+      @lines << line
+    end
+
+    def checkpoints
+      @lines.dup
+    end
+  end
 end
 
 RSpec.configure do |config|

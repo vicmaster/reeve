@@ -20,7 +20,7 @@ RSpec.describe "a verification's report" do
 
       expect(result.to_s).to eq(
         "reeve ledger: INTACT — sequences 1–48,211 verified (head at start: 48,211); " \
-        "5,000 earlier entries not covered (5,000 when the chain started)"
+        "5,000 earlier entries not covered (5,000 when the chain started); not anchored"
       )
     end
 
@@ -34,7 +34,7 @@ RSpec.describe "a verification's report" do
                                 uncovered_now: 5_000, uncovered_at_genesis: 4_998)
 
       expect(result.to_s).to eq(<<~REPORT.chomp)
-        reeve ledger: BROKEN — 3 breaks in sequences 1–48,211; 5,000 earlier entries not covered (4,998 when the chain started)
+        reeve ledger: BROKEN — 3 breaks in sequences 1–48,211; 5,000 earlier entries not covered (4,998 when the chain started); not anchored
           totals: digest_mismatch 2, missing 1
           #1,204        digest_mismatch  #{mismatch}
           #3,310–3,311  missing          2 entries not found
@@ -49,7 +49,7 @@ RSpec.describe "a verification's report" do
                                 head_at_end: 48_211, uncovered_now: 5_000, uncovered_at_genesis: 5_000)
 
       expect(result.to_s).to eq(<<~REPORT.chomp)
-        reeve ledger: BROKEN — 1 break in sequences 1–48,211; 5,000 earlier entries not covered (5,000 when the chain started)
+        reeve ledger: BROKEN — 1 break in sequences 1–48,211; 5,000 earlier entries not covered (5,000 when the chain started); not anchored
           totals: beyond_head 1
           #48,212       beyond_head      numbered past the head (48,211 at the end of the walk); reeve did not write it
       REPORT
@@ -65,8 +65,74 @@ RSpec.describe "a verification's report" do
       expect(result.to_s).to eq(
         "reeve ledger: UNVERIFIABLE — 1,200 entries signed by key 9f2c41d07ab3e815, which is not " \
         "configured; the other 47,011 in 1–48,211 show no breaks, which is not a pass; " \
-        "5,000 earlier entries not covered"
+        "5,000 earlier entries not covered; not anchored"
       )
+    end
+
+    # specs/004 FR-014, contracts/anchoring.md "Verification".
+    context "with checkpoints" do
+      let(:result_of) { Reeve::Audit::Chain::CheckpointCheck::Result }
+
+      def checked(sequence, made_at = "2026-10-25T14:00:00.123456Z", status: :checked)
+        result_of.new(head_sequence: sequence, made_at: made_at, key_id: "3fa4b5c6d7e8f901", status: status)
+      end
+
+      it "states where an intact chain is anchored, and how many entries come after it" do
+        result = verification.new(status: :intact, covered: 1..48_211, head_at_start: 48_211,
+                                  head_at_end: 48_211, uncovered_now: 5_000, uncovered_at_genesis: 5_000,
+                                  checkpoints: [checked(48_000)], anchored_at: checked(48_000), beyond_anchor: 211)
+
+        expect(result.to_s).to eq(
+          "reeve ledger: INTACT — sequences 1–48,211 verified (head at start: 48,211); " \
+          "5,000 earlier entries not covered (5,000 when the chain started); " \
+          "anchored at #48,000 (checkpoint 2026-10-25 14:00 UTC), 211 entries after it"
+        )
+      end
+
+      it "says one entry, not one entries" do
+        result = verification.new(status: :intact, covered: 1..3, head_at_start: 3, head_at_end: 3,
+                                  checkpoints: [checked(2)], anchored_at: checked(2), beyond_anchor: 1)
+
+        expect(result.to_s).to end_with("anchored at #2 (checkpoint 2026-10-25 14:00 UTC), 1 entry after it")
+      end
+
+      it "states a checkpoint the ledger no longer reaches, labelled by its sequence" do
+        breaks = [break_of.new(kind: :checkpoint_not_reached, sequence: nil, checkpoint: 500,
+                               detail: "the head is at 400; entries the checkpoint saw were removed")]
+        result = verification.new(status: :broken, covered: 1..400, breaks: breaks, head_at_start: 400,
+                                  head_at_end: 400, checkpoints: [checked(300), checked(500, status: :not_reached)],
+                                  anchored_at: checked(300, "2026-10-24T14:00:00.000000Z"), beyond_anchor: 100)
+
+        expect(result.to_s).to eq(<<~REPORT.chomp)
+          reeve ledger: BROKEN — 1 break in sequences 1–400; 0 earlier entries not covered; anchored at #300 (checkpoint 2026-10-24 14:00 UTC), 100 entries after it
+            totals: checkpoint_not_reached 1
+            checkpoint #500 checkpoint_not_reached the head is at 400; entries the checkpoint saw were removed
+        REPORT
+      end
+
+      it "states an emptied ledger that checkpoints saw" do
+        breaks = Array.new(3) do |i|
+          break_of.new(kind: :checkpoint_not_reached, sequence: nil, checkpoint: i + 1, detail: "the ledger has no chain")
+        end
+        result = verification.new(status: :broken, breaks: breaks,
+                                  checkpoints: [1, 2, 3].map { |n| checked(n, status: :not_reached) })
+
+        expect(result.to_s.lines.first.chomp)
+          .to eq("reeve ledger: BROKEN — 3 breaks in the ledger; the ledger has no chain, but 3 checkpoints name one")
+      end
+
+      # A checkpoint whose key is missing is not an entry, and is not counted as one.
+      it "states a checkpoint it could not check, apart from the entries" do
+        breaks = [break_of.new(kind: :unknown_key, sequence: nil, checkpoint: 9, key_id: "9f2c41d07ab3e815")]
+        result = verification.new(status: :unverifiable, covered: 1..10, breaks: breaks, head_at_start: 10,
+                                  checkpoints: [checked(9, status: :key_not_configured)])
+
+        expect(result.to_s).to eq(
+          "reeve ledger: UNVERIFIABLE — 1 checkpoint signed by key 9f2c41d07ab3e815, which is not " \
+          "configured; the other 10 in 1–10 show no breaks, which is not a pass; " \
+          "0 earlier entries not covered; not anchored"
+        )
+      end
     end
 
     it "states that nothing was verified without a key" do
@@ -122,13 +188,29 @@ RSpec.describe "a verification's report" do
       expect(json.keys).to contain_exactly(
         "status", "covered", "head_at_start", "head_at_end", "uncovered_now", "uncovered_at_genesis",
         "unchained_now", "unchained_at_genesis", "unverifiable_count", "totals", "breaks", "reason",
-        "epochs", "before_first_epoch"
+        "epochs", "before_first_epoch", "checkpoints", "anchored_at", "beyond_anchor", "walked_from"
       )
       expect(json["status"]).to eq("broken")
       expect(json["covered"]).to eq("first" => 1, "last" => 9)
       expect(json["breaks"]).to eq([{ "kind" => "missing", "sequence" => { "first" => 3, "last" => 4 },
                                       "detail" => "2 entries not found", "invocation_id" => nil,
-                                      "key_id" => nil, "epoch" => nil }])
+                                      "key_id" => nil, "epoch" => nil, "checkpoint" => nil }])
+      expect(json.values_at("checkpoints", "anchored_at", "beyond_anchor", "walked_from")).to eq([[], nil, nil, nil])
+    end
+
+    it "carries each checkpoint's result and where the run was anchored" do
+      found = Reeve::Audit::Chain::CheckpointCheck::Result.new(
+        head_sequence: 7, made_at: "2026-10-25T14:00:00.000000Z", key_id: "3fa4b5c6d7e8f901", status: :checked
+      )
+      json = JSON.parse(JSON.generate(
+                          verification.new(status: :intact, covered: 1..9, head_at_start: 9, checkpoints: [found],
+                                           anchored_at: found, beyond_anchor: 2).as_json
+                        ))
+
+      expect(json["checkpoints"]).to eq([{ "head_sequence" => 7, "made_at" => "2026-10-25T14:00:00.000000Z",
+                                           "key_id" => "3fa4b5c6d7e8f901", "status" => "checked" }])
+      expect(json["anchored_at"]).to eq("head_sequence" => 7, "made_at" => "2026-10-25T14:00:00.000000Z")
+      expect(json["beyond_anchor"]).to eq(2)
     end
   end
 
@@ -171,7 +253,33 @@ RSpec.describe "a verification's report" do
         chain.append!(row)
         Reeve.config.ledger_key = nil
       },
-      "without a chain" => -> { 2.times { legacy! } }
+      "without a chain" => -> { 2.times { legacy! } },
+      "intact, anchored" => lambda {
+        Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new
+        2.times { chain.append!(row) }
+        Reeve::Audit::Chain.checkpoint!
+        chain.append!(row)
+      },
+      "broken by a truncated tail, anchored" => lambda {
+        Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new
+        3.times { chain.append!(row) }
+        Reeve::Audit::Chain.checkpoint!
+        Ledger.truncate_tail!(after: 1)
+      },
+      "broken by an emptied ledger, anchored" => lambda {
+        Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new
+        2.times { chain.append!(row) }
+        Reeve::Audit::Chain.checkpoint!
+        Ledger.empty!
+      },
+      "unverifiable for want of a checkpoint's key" => lambda {
+        Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new
+        Reeve.config.ledger_key = "another-ledger-key-not-a-secret-0123456789"
+        2.times { chain.append!(row) }
+        Reeve::Audit::Chain.checkpoint!
+        Reeve.config.ledger_key = Ledger::TEST_KEY
+        Reeve.config.retired_ledger_keys = []
+      }
     }
 
     states.each do |label, build|
@@ -186,6 +294,13 @@ RSpec.describe "a verification's report" do
             expect(line).to match(/\d[\d,]*–\d[\d,]*/), "no covered range on: #{line}"
             expect(line).to match(/not covered/), "no uncovered count on: #{line}"
           end
+        end
+
+        # specs/004 SC-003: anchoring is part of what a walked result means.
+        it "states the anchoring on the summary line of every result that walked the chain" do
+          next if result.head_at_start.nil?
+
+          expect(result.to_s.lines.first).to match(/; (not anchored|anchored at #[\d,]+ \(checkpoint .+\), [\d,]+ entr(y|ies) after it)$/)
         end
 
         it "is a success only when intact" do

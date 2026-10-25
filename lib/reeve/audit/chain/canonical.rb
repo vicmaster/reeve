@@ -33,6 +33,8 @@ module Reeve
 
         EPOCH_TAG = "reeve-ledger-epoch-v1"
 
+        CHECKPOINT_TAG = "reeve-ledger-checkpoint-v1"
+
         CONTRACT_3_FIELDS = %w[
           chain_sequence chain_key_id contract_version
           invocation_id occurred_at agent_id agent_name principal_type principal_id
@@ -50,6 +52,12 @@ module Reeve
                             genesis_key_id].freeze
 
         EPOCH_FIELDS = %w[epoch key_id first_sequence opened_at].freeze
+
+        # A checkpoint's signed fields (specs/004 contracts/checkpoint-v1.md), in this order.
+        CHECKPOINT_FIELDS = %w[
+          format ledger genesis_digest pre_chain_count pre_chain_unchained_count
+          head_sequence head_digest epoch epoch_digest key_id made_at reeve_version
+        ].freeze
 
         TIME_FIELDS = %w[occurred_at genesis_at opened_at].freeze
 
@@ -69,6 +77,13 @@ module Reeve
         def epoch_digest(secret, epoch, previous_digest:)
           pairs = EPOCH_FIELDS.map { |field| [field, value(epoch, field)] }
           hmac(secret, EPOCH_TAG, dump([["previous_digest", previous_digest], *pairs]))
+        end
+
+        # A checkpoint (specs/004). `made_at` is signed as the string it is stored as, so a line
+        # verifies exactly as written, whatever its reader does with times.
+        def checkpoint_signature(secret, values)
+          pairs = CHECKPOINT_FIELDS.map { |field| [field, values.fetch(field)] }
+          hmac(secret, CHECKPOINT_TAG, dump(pairs))
         end
 
         def entry_message_body(row, previous_digest)

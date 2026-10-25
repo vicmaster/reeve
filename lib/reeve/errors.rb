@@ -85,6 +85,21 @@ module Reeve
     end
   end
 
+  # Raised when a ledger checkpoint cannot be read (specs/004 research R5): a line that is
+  # not a checkpoint, or one in a format this version does not know. Not a break — it says
+  # nothing about the ledger — but never skipped either: a store whose lines do not read
+  # cannot be counted as anchoring anything. `position` is the line's place in its list,
+  # from 1, so the operator can find it; the line itself is not repeated.
+  class CheckpointError < Error
+    attr_reader :position
+
+    def initialize(reason, position: nil)
+      @position = position
+      where = position ? "checkpoint #{position}" : "a checkpoint"
+      super("#{where} cannot be read: #{reason}")
+    end
+  end
+
   # Raised when the ledger write fails and audit_failure_mode is :fail (FR-012).
   #
   # It carries a rule like any other denial, because the failure is not recorded anywhere

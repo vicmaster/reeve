@@ -55,15 +55,28 @@ module Reeve
 
       # Verifies the whole ledger. With `keys:`, verifies with those keys alone — how an
       # auditor checks a ledger with their own copy of the key.
-      def self.verify(keys: nil, entry_class: Entry, batch_size: Verifier::BATCH_SIZE)
-        keyring = keys ? Keyring.new(signing: nil, retired: keys) : Keyring.from(Reeve.config)
-        Verifier.new(entry_class: entry_class, keyring: keyring, batch_size: batch_size).call
+      #
+      # `checkpoints:` (specs/004) are checkpoint lines or Checkpoints to check the ledger
+      # against; nil means the configured anchor's, and [] none. They are never read from the
+      # database. A line that does not parse raises CheckpointError before anything is walked.
+      #
+      # `from: :latest` walks from the checkpoint with the highest sequence instead of the
+      # genesis (FR-015), after checking that checkpoint on its own; a Checkpoint names one.
+      def self.verify(keys: nil, entry_class: Entry, checkpoints: nil, from: nil, **options)
+        Verifier.new(entry_class: entry_class, keyring: Keyring.verifying(keys), from: from,
+                     checkpoints: Checkpoint.read_all(checkpoints), **options).call
       end
 
       # Makes the configured ledger key the key of the latest epoch (specs/003 FR-006) and
       # returns a Rotation saying what happened. `bin/rails reeve:rotate_ledger_key` runs it.
       def self.rotate_key!(accept_unverifiable: false, entry_class: Entry)
         new(entry_class: entry_class).rotate_key!(accept_unverifiable: accept_unverifiable)
+      end
+
+      # Makes a checkpoint of where the chain has reached and hands it to `anchor` (specs/004);
+      # returns a CheckpointResult. `bin/rails reeve:checkpoint_ledger` runs it.
+      def self.checkpoint!(entry_class: Entry, anchor: Reeve.config.ledger_anchor)
+        CheckpointResult.make!(entry_class: entry_class, anchor: anchor)
       end
 
       def initialize(entry_class: Entry, keyring: nil)
