@@ -68,7 +68,7 @@ RSpec.describe "ledger write cost", :benchmark do
 end
 
 # specs/002 T054 / SC-004: verifying a large ledger, in time and in memory; and specs/004
-# SC-004: checkpointing one.
+# SC-004: checkpointing one; and specs/005 SC-004: purging one.
 #
 #   bundle exec rspec --tag benchmark_large spec/reeve/audit/chain/benchmark_spec.rb
 #
@@ -86,8 +86,11 @@ RSpec.describe "verifying a large ledger", :benchmark_large do
   # time; returns the last digest so the head can be pointed at it.
   def build_chain(size)
     keyring = Reeve::Audit::Chain::Keyring.from(Reeve.config)
-    Reeve::Audit::Chain::Head.new(connection: ActiveRecord::Base.connection, entry_class: Reeve::Audit::Entry)
-                             .start!(keyring)
+    connection = ActiveRecord::Base.connection
+    Reeve::Audit::Chain::Head.new(connection: connection, entry_class: Reeve::Audit::Entry).start!(keyring)
+    # Contract-4 rows name their key epoch (specs/003), so the key opens epoch 0 at sequence 1,
+    # as the first chained write would.
+    Reeve::Audit::Chain::Epochs.new(connection: connection).open!(keyring, first_sequence: 1)
     previous = Reeve::Audit::ChainRecord.ledger.genesis_digest
 
     (1..size).each_slice(BATCH) do |sequences|
@@ -107,7 +110,8 @@ RSpec.describe "verifying a large ledger", :benchmark_large do
       invocation_id: "bench-#{sequence}", occurred_at: Time.utc(2026, 10, 1) + sequence,
       agent_id: "a", tool_name: "invoice_search", arguments: { "q" => sequence, "f" => { "s" => "open" } },
       outcome: "allow", rule: "r", record_ids: [sequence.to_s], record_count: 1, guard: "policy",
-      contract_version: Reeve::Audit::CONTRACT_VERSION, chain_sequence: sequence, chain_key_id: keyring.signing_id
+      contract_version: Reeve::Audit::CONTRACT_VERSION, chain_sequence: sequence, chain_key_id: keyring.signing_id,
+      chain_epoch: 0
     }
     entry = Reeve::Audit::Entry.new(@normalizer.call(attributes))
     entry.chain_digest = Reeve::Audit::Chain::Canonical.entry_digest(keyring.signing_secret, entry,
@@ -149,6 +153,44 @@ RSpec.describe "verifying a large ledger", :benchmark_large do
       format("checkpoint (%<db>s, 1000000 entries): %<ms>.1f ms", db: SpecDatabase.adapter, ms: seconds * 1000)
     )
     expect(seconds).to be < 1
+  end
+
+  # specs/005 SC-004: a purge of a million entries holds no lock writers queue on. A writer
+  # appends throughout; its slowest write is reported beside the purge's time, and verification
+  # afterwards walks only what the writer added.
+  it "purges 1,000,000 entries while writes continue, and verifies only the rest" do
+    size = Integer(ENV.fetch("REEVE_PURGE_SIZE", "1000000"))
+    build_chain(size)
+    Reeve.config.ledger_anchor = Ledger::RecordingAnchor.new
+    Reeve.config.ledger_retention_connection = Ledger.retention_connection
+    Reeve::Audit::Chain.checkpoint!
+
+    stop = false
+    waits = []
+    writer = Thread.new do
+      chain = Reeve::Audit::Chain.new(entry_class: Reeve::Audit::Entry)
+      until stop
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        chain.append!(invocation_id: SecureRandom.uuid, occurred_at: Time.now, agent_id: "a",
+                      tool_name: "t", arguments: {}, outcome: "allow", rule: "r", record_ids: [],
+                      guard: "policy", contract_version: Reeve::Audit::CONTRACT_VERSION)
+        waits << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
+      end
+    end
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    result = Reeve::Audit::Chain.purge!(through: size, no_archive: true, confirm: true)
+    seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+    stop = true
+    writer.join
+
+    expect(result).to be_purged, result.to_s
+    after = Reeve::Audit::Chain.verify(checkpoints: [])
+    expect(after.status).to eq(:intact)
+    expect(after.covered).to eq((size + 1)..(size + waits.size))
+    RSpec.configuration.reporter.message(
+      format("purge (%<db>s, %<size>d entries): %<s>.1f s; %<n>d writes during it, slowest %<ms>.1f ms",
+             db: SpecDatabase.adapter, size: size, s: seconds, n: waits.size, ms: waits.max.to_f * 1000)
+    )
   end
 
   it "verifies 100,000 and 1,000,000 entries, reporting time and peak memory" do
