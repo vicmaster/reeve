@@ -18,8 +18,9 @@ module Reeve
         # `epoch` is set for a break about a key epoch's record (specs/003), whose sequence is nil.
         # `checkpoint` is the head sequence of the checkpoint a break is about (specs/004); such a
         # break has no sequence of its own.
+        # `retention` is the number of the retention record a break is about (specs/005).
         Break = Struct.new(:kind, :sequence, :detail, :invocation_id, :key_id, :epoch, :checkpoint,
-                           keyword_init: true)
+                           :retention, keyword_init: true)
 
         # One key epoch as verification found it (specs/003 FR-013). `entry_count` counts the
         # walked rows that named it; `status` is :verified, :key_not_configured or :altered.
@@ -40,6 +41,7 @@ module Reeve
           genesis_altered chain_record_missing unknown_key
           epoch_missing epoch_mismatch epoch_altered
           checkpoint_not_reached checkpoint_mismatch checkpoint_altered
+          retention_altered
         ].freeze
 
         # The status rules (data-model), for a verification that had a key and found a
@@ -57,12 +59,14 @@ module Reeve
         attr_reader :status, :covered, :breaks, :head_at_start, :head_at_end,
                     :uncovered_now, :uncovered_at_genesis, :unchained_now, :unchained_at_genesis,
                     :reason, :epochs, :before_first_epoch,
-                    :checkpoints, :anchored_at, :beyond_anchor, :walked_from
+                    :checkpoints, :anchored_at, :beyond_anchor, :walked_from,
+                    :retention, :awaiting_purge
 
         def initialize(status:, covered: nil, breaks: [], head_at_start: nil, head_at_end: nil,
                        uncovered_now: 0, uncovered_at_genesis: nil, unchained_now: 0,
                        unchained_at_genesis: nil, reason: nil, epochs: [], before_first_epoch: nil,
-                       checkpoints: [], anchored_at: nil, beyond_anchor: nil, walked_from: nil)
+                       checkpoints: [], anchored_at: nil, beyond_anchor: nil, walked_from: nil,
+                       retention: nil, awaiting_purge: 0)
           raise ArgumentError, "unknown status #{status.inspect}" unless STATUSES.include?(status)
 
           @status = status
@@ -81,12 +85,12 @@ module Reeve
           @anchored_at = anchored_at
           @beyond_anchor = beyond_anchor
           @walked_from = walked_from
+          @retention = retention
+          @awaiting_purge = awaiting_purge
           freeze
         end
 
-        def intact?
-          status == :intact
-        end
+        def intact? = status == :intact
 
         # Never capped, whatever the display does with the list.
         def totals
@@ -122,7 +126,8 @@ module Reeve
           { "breaks" => breaks.map { |b| break_json(b) }, "epochs" => epochs.map(&:as_json),
             "before_first_epoch" => before_first_epoch, "checkpoints" => checkpoints.map(&:as_json),
             "anchored_at" => point_json(anchored_at), "beyond_anchor" => beyond_anchor,
-            "walked_from" => point_json(walked_from) }
+            "walked_from" => point_json(walked_from), "retention" => retention&.as_json,
+            "awaiting_purge" => awaiting_purge }
         end
 
         def point_json(checkpoint)
@@ -134,7 +139,8 @@ module Reeve
           {
             "kind" => found.kind.to_s, "sequence" => range_json(found.sequence),
             "detail" => found.detail, "invocation_id" => found.invocation_id,
-            "key_id" => found.key_id, "epoch" => found.epoch, "checkpoint" => found.checkpoint
+            "key_id" => found.key_id, "epoch" => found.epoch, "checkpoint" => found.checkpoint,
+            "retention" => found.retention
           }
         end
 

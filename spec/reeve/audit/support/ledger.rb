@@ -19,7 +19,7 @@ module Ledger
     "../../../../lib/generators/reeve/install/templates/create_audit_entries.rb.tt", __dir__
   )
 
-  CHAIN_TABLES = %w[reeve_audit_chains reeve_audit_chain_epochs].freeze
+  CHAIN_TABLES = %w[reeve_audit_chains reeve_audit_chain_epochs reeve_audit_retentions].freeze
 
   class << self
     # The connection is shared with the other ActiveRecord-backed specs; see
@@ -144,6 +144,68 @@ end
 # exercise the missing-key path unset it themselves.
 module Ledger
   TEST_KEY = "reeve-spec-ledger-key-not-a-secret-0123456789"
+end
+
+# A host's retention connection, for specs (specs/005): an abstract class on the spec database.
+# On PostgreSQL and MySQL it connects as a role of its own holding exactly the grants the
+# data model gives the retention role, so a purge that needs anything more fails here as it
+# would for a host. SQLite has no roles, so there it is a second pool on the same file.
+module Ledger
+  RETENTION_ROLE = "reeve_retention"
+  RETENTION_PASSWORD = "reeve-retention-not-a-secret"
+
+  class << self
+    def retention_connection
+      grant_retention_role! unless SpecDatabase.sqlite?
+      @retention_connection ||= begin
+        klass = Class.new(ActiveRecord::Base) { self.abstract_class = true }
+        const_set(:RetentionSpecRecord, klass)
+        klass.establish_connection(retention_configuration)
+        klass
+      end
+    end
+
+    private
+
+    def retention_configuration
+      own = ActiveRecord::Base.connection_db_config.configuration_hash
+      return own if SpecDatabase.sqlite?
+
+      own.merge(username: RETENTION_ROLE, password: RETENTION_PASSWORD)
+    end
+
+    # Granted again on every call: Ledger.prepare! may have rebuilt the tables, and a grant
+    # goes with the table it was given on.
+    def grant_retention_role!
+      connection = ActiveRecord::Base.connection
+      statements = SpecDatabase.adapter == "postgresql" ? postgresql_grants : mysql_grants(connection)
+      statements.each { |sql| connection.execute(sql) }
+    end
+
+    def postgresql_grants
+      [
+        "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '#{RETENTION_ROLE}') THEN " \
+        "CREATE ROLE #{RETENTION_ROLE} LOGIN PASSWORD '#{RETENTION_PASSWORD}'; END IF; END $$",
+        "GRANT SELECT ON reeve_audit_entries, reeve_audit_chains, reeve_audit_chain_epochs, " \
+        "reeve_audit_retentions TO #{RETENTION_ROLE}",
+        "GRANT DELETE ON reeve_audit_entries TO #{RETENTION_ROLE}",
+        "GRANT INSERT ON reeve_audit_retentions TO #{RETENTION_ROLE}",
+        "GRANT USAGE ON SEQUENCE reeve_audit_retentions_id_seq TO #{RETENTION_ROLE}"
+      ]
+    end
+
+    def mysql_grants(connection)
+      database = connection.current_database
+      user = "'#{RETENTION_ROLE}'@'%'"
+      [
+        "CREATE USER IF NOT EXISTS #{user} IDENTIFIED BY '#{RETENTION_PASSWORD}'",
+        *%w[reeve_audit_entries reeve_audit_chains reeve_audit_chain_epochs reeve_audit_retentions]
+          .map { |table| "GRANT SELECT ON #{database}.#{table} TO #{user}" },
+        "GRANT DELETE ON #{database}.reeve_audit_entries TO #{user}",
+        "GRANT INSERT ON #{database}.reeve_audit_retentions TO #{user}"
+      ]
+    end
+  end
 end
 
 # An anchor for specs (specs/004): keeps the lines it is given, in memory, and raises when told

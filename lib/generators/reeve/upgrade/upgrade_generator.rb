@@ -58,6 +58,15 @@ module Reeve
           creates: %w[reeve_audit_chain_epochs],
           template: "add_key_epochs_to_reeve_audit_entries.rb.tt",
           destination: "add_key_epochs_to_reeve_audit_entries.rb"
+        },
+        # Retention (specs/005) adds a table and no column, so the contract stays 4.
+        {
+          contract: 4,
+          note: :retention,
+          adds: [],
+          creates: %w[reeve_audit_retentions],
+          template: "add_ledger_retention_to_reeve_audit_entries.rb.tt",
+          destination: "add_ledger_retention_to_reeve_audit_entries.rb"
         }
       ].freeze
 
@@ -124,7 +133,7 @@ module Reeve
           Existing rows are stamped with the contract they were actually written under,
           not with the current one.
         NEXT
-        message + UpgradeNotes.for(@emitted.map { |step| step[:contract] })
+        message + UpgradeNotes.for(@emitted)
       end
 
       # Asked of the table rather than of a version the host recorded: the table is the

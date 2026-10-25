@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "tasks/purge_options"
+require_relative "tasks/descriptions"
 
 module Reeve
   # `bin/rails reeve:verify_ledger` (specs/002 FR-017, contracts/ledger-chain.md "Rake").
@@ -15,6 +17,7 @@ module Reeve
     EXIT = { intact: 0, broken: 1, unverifiable: 2, no_chain: 2 }.freeze
     FORMATS = %w[text json].freeze
     ROTATE_EXIT = { rotated: 0, current: 0, refused: 1 }.freeze
+    PURGE_EXIT = { dry_run: 0, purged: 0, nothing_to_purge: 0, refused: 1 }.freeze
 
     module_function
 
@@ -88,6 +91,29 @@ module Reeve
       raise ArgumentError, "FROM must be latest or unset, got #{raw.inspect}"
     end
 
+    # Purges the ledger's oldest entries up to a checkpoint (specs/005, contracts/retention.md),
+    # writes what it did to `out`, and returns the exit status: 0 for a dry run, a purge, or
+    # nothing to purge; 1 refused. Nothing is removed without CONFIRM=1.
+    def purge_ledger(env: ENV, out: $stdout)
+      options = PurgeOptions.from(env)
+      require "reeve/audit"
+      result = Reeve::Audit::Chain.purge!(**options)
+      out.puts(result.to_s)
+      PURGE_EXIT.fetch(result.status)
+    end
+
+    # Verifies an archive a purge wrote, on its own (specs/005 FR-012); exit codes as
+    # verify_ledger's. ARCHIVE=path names it.
+    def verify_archive(env: ENV, out: $stdout)
+      path = env.fetch("ARCHIVE", "")
+      raise ArgumentError, "ARCHIVE must name an archive file" if path.empty?
+
+      require "reeve/audit"
+      result = Reeve::Audit::Chain.verify_archive(path)
+      out.puts(result.to_s)
+      EXIT.fetch(result.status)
+    end
+
     # nil (the configured anchor's) unless CHECKPOINTS is set.
     def checkpoints_from(env)
       return nil unless env.key?("CHECKPOINTS")
@@ -114,30 +140,17 @@ module Reeve
       raise ArgumentError, "LIMIT must be a whole number of breaks to list, got #{raw.inspect}"
     end
 
-    # The Rake task, defined on the current Rake application. Depends on :environment, so
-    # the host's initializer — and with it the ledger key — is loaded first.
+    # The Rake tasks, defined on the current Rake application. Each depends on :environment,
+    # so the host's initializer — and with it the ledger key — is loaded first.
     #
     # The DSL is borrowed by a throwaway object, so Reeve::Tasks itself never gains `task`,
     # `sh` and the rest of Rake's methods.
     def define
       Object.new.extend(Rake::DSL).instance_exec do
         namespace :reeve do
-          desc "Verify the audit ledger's chain " \
-               "(exit 0 intact, 1 broken, 2 could not verify; LIMIT=, FORMAT=json)"
-          task verify_ledger: :environment do
-            exit Reeve::Tasks.verify_ledger
-          end
-
-          desc "Checkpoint the audit ledger's chain to config.ledger_anchor " \
-               "(exit 0 made, 1 refused or the anchor failed)"
-          task checkpoint_ledger: :environment do
-            exit Reeve::Tasks.checkpoint_ledger
-          end
-
-          desc "Make config.ledger_key the ledger's current key epoch (exit 0 rotated or " \
-               "current, 1 refused; ACCEPT_UNVERIFIABLE=1 if the old key is lost)"
-          task rotate_ledger_key: :environment do
-            exit Reeve::Tasks.rotate_ledger_key
+          DESCRIPTIONS.each do |name, description|
+            desc description
+            task(name => :environment) { exit Reeve::Tasks.public_send(name) }
           end
         end
       end

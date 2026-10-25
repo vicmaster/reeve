@@ -87,6 +87,7 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
     connection.drop_table(:reeve_audit_entries, if_exists: true)
     connection.drop_table(:reeve_audit_chains, if_exists: true)
     connection.drop_table(:reeve_audit_chain_epochs, if_exists: true)
+    connection.drop_table(:reeve_audit_retentions, if_exists: true)
   end
 
   # Oldest first, which is the order the generator numbers them in and the order a host's
@@ -125,11 +126,15 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
   # contract 2 and are the host's from their original install, so they are not compared.
   def indexes_of
     {
-      entries: connection.indexes(:reeve_audit_entries).select { |i| i.columns == ["chain_sequence"] }
-                         .map { |i| [i.columns, i.unique] },
-      chains: connection.indexes(:reeve_audit_chains).map { |i| [i.columns, i.unique] },
-      epochs: connection.indexes(:reeve_audit_chain_epochs).map { |i| [i.columns, i.unique] }.sort
+      entries: unique_indexes(:reeve_audit_entries).select { |columns, _| columns == ["chain_sequence"] },
+      chains: unique_indexes(:reeve_audit_chains),
+      epochs: unique_indexes(:reeve_audit_chain_epochs).sort,
+      retentions: unique_indexes(:reeve_audit_retentions)
     }
+  end
+
+  def unique_indexes(table)
+    connection.indexes(table).map { |index| [index.columns, index.unique] }
   end
 
   def shape_of(table)
@@ -163,7 +168,8 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
 
       expect(written).to eq(%w[add_contract_version_to_reeve_audit_entries.rb
                                add_ledger_chain_to_reeve_audit_entries.rb
-                               add_key_epochs_to_reeve_audit_entries.rb])
+                               add_key_epochs_to_reeve_audit_entries.rb
+                               add_ledger_retention_to_reeve_audit_entries.rb])
     end
 
     it "says what it wrote and what to run next" do
@@ -214,12 +220,13 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
   describe "on a ledger one contract behind (contract 2)" do
     before { create_contract_2_table }
 
-    it "writes the chain step and the key-epoch step" do
+    it "writes the chain, key-epoch and retention steps" do
       run_upgrade
 
       expect(migrations.map { |path| File.basename(path) })
         .to contain_exactly(match(/\A\d{14}_add_ledger_chain_to_reeve_audit_entries\.rb\z/),
-                            match(/\A\d{14}_add_key_epochs_to_reeve_audit_entries\.rb\z/))
+                            match(/\A\d{14}_add_key_epochs_to_reeve_audit_entries\.rb\z/),
+                            match(/\A\d{14}_add_ledger_retention_to_reeve_audit_entries\.rb\z/))
     end
 
     it "leaves every existing row exactly as it was" do
@@ -259,6 +266,7 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
       migrate_all_up
       Object.send(:remove_const, :AddLedgerChainToReeveAuditEntries)
       Object.send(:remove_const, :AddKeyEpochsToReeveAuditEntries)
+      Object.send(:remove_const, :AddLedgerRetentionToReeveAuditEntries)
 
       output = run_upgrade
 
@@ -267,15 +275,51 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
     end
   end
 
+  # specs/005 T003: the upgrade a 0.7.0 or 0.8.0 host makes. A table and no column, so the
+  # contract stays 4.
+  describe "on a contract-4 ledger without the retention table" do
+    before do
+      create_contract_3_table
+      run_upgrade
+      migrate_all_up
+      connection.drop_table(:reeve_audit_retentions)
+      Object.send(:remove_const, :AddKeyEpochsToReeveAuditEntries)
+      Object.send(:remove_const, :AddLedgerRetentionToReeveAuditEntries)
+    end
+
+    it "writes only the retention step, saying how the purge runs, and the contract stays 4" do
+      output = run_upgrade
+
+      expect(migrations.map { |path| File.basename(path) })
+        .to contain_exactly(match(/\A\d{14}_add_ledger_retention_to_reeve_audit_entries\.rb\z/))
+      expect(output).to include("audit-entry contract 4", "bin/rails reeve:purge_ledger", "retention role")
+      expect(output).not_to include("reeve:rotate_ledger_key")
+    end
+
+    it "leaves the entries table's columns as they were" do
+      before_upgrade = connection.columns(:reeve_audit_entries).map(&:name)
+
+      run_upgrade
+      migrate_all_up
+
+      expect(connection.columns(:reeve_audit_entries).map(&:name)).to eq(before_upgrade)
+      expect(connection.table_exists?(:reeve_audit_retentions)).to be(true)
+    ensure
+      Object.send(:remove_const, :AddLedgerRetentionToReeveAuditEntries) if
+        Object.const_defined?(:AddLedgerRetentionToReeveAuditEntries, false)
+    end
+  end
+
   # specs/003 FR-016, US5: the upgrade a 0.6.0 host makes.
   describe "on a ledger one contract behind (contract 3)" do
     before { create_contract_3_table }
 
-    it "writes only the key-epoch step" do
+    it "writes the key-epoch step and the retention step" do
       run_upgrade
 
       expect(migrations.map { |path| File.basename(path) })
-        .to contain_exactly(match(/\A\d{14}_add_key_epochs_to_reeve_audit_entries\.rb\z/))
+        .to contain_exactly(match(/\A\d{14}_add_key_epochs_to_reeve_audit_entries\.rb\z/),
+                            match(/\A\d{14}_add_ledger_retention_to_reeve_audit_entries\.rb\z/))
     end
 
     it "leaves every existing row exactly as it was" do
@@ -328,7 +372,7 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
       output = run_upgrade
 
       expect(output).not_to include("already at audit-entry contract 4")
-      expect(migrations.size).to eq(1)
+      expect(migrations.size).to eq(2) # the epochs table, and the retention table
     end
   end
 
@@ -369,7 +413,7 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
       run_upgrade
       run_upgrade(fresh: false)
 
-      expect(migrations.size).to eq(3)
+      expect(migrations.size).to eq(4)
     end
   end
 
@@ -388,14 +432,14 @@ RSpec.describe "reeve:upgrade generator", if: rails_available do
       load Dir[File.join(install_destination, "db/migrate/*_create_reeve_audit_entries.rb")].first
       CreateReeveAuditEntries.new.migrate(:up)
       fresh = [shape_of(:reeve_audit_entries), shape_of(:reeve_audit_chains),
-               shape_of(:reeve_audit_chain_epochs), indexes_of]
+               shape_of(:reeve_audit_chain_epochs), shape_of(:reeve_audit_retentions), indexes_of]
 
       # Path B: a contract 1 table, upgraded through every step.
       create_contract_1_table
       run_upgrade
       migrate_all_up
       upgraded = [shape_of(:reeve_audit_entries), shape_of(:reeve_audit_chains),
-                  shape_of(:reeve_audit_chain_epochs), indexes_of]
+                  shape_of(:reeve_audit_chain_epochs), shape_of(:reeve_audit_retentions), indexes_of]
 
       expect(upgraded).to eq(fresh)
     ensure

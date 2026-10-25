@@ -17,6 +17,7 @@ module Reeve
         LABEL_WIDTH = 14
         KIND_WIDTH = 17
         PREFIX = "reeve ledger:"
+        NOTHING_AFTER_PURGE = "no entries after the purge to verify"
 
         def self.number(value)
           digits = value.abs.to_s.reverse.scan(/\d{1,3}/).join(",").reverse
@@ -52,8 +53,9 @@ module Reeve
             return "#{PREFIX} INTACT — #{anchor_text.walked_from}; #{uncovered}; #{anchor_text}"
           end
 
-          "#{PREFIX} INTACT — sequences #{range(@v.covered)} verified " \
-            "(head at start: #{number(@v.head_at_start)}); #{uncovered}; #{anchor_text}"
+          walked = @v.covered ? "sequences #{range(@v.covered)} verified" : NOTHING_AFTER_PURGE
+          "#{PREFIX} INTACT — #{walked} (head at start: #{number(@v.head_at_start)}); " \
+            "#{uncovered}; #{anchor_text}"
         end
 
         def broken
@@ -67,28 +69,30 @@ module Reeve
           "#{PREFIX} BROKEN — #{breaks} #{where}; #{uncovered}; #{anchor_text}"
         end
 
-        def anchor_text
-          @anchor_text ||= AnchorText.new(@v)
-        end
+        def anchor_text = (@anchor_text ||= AnchorText.new(@v))
 
         def no_chain
           "#{PREFIX} NO CHAIN — #{number(@v.uncovered_now + @v.unchained_now)} entries, " \
             "none chained; nothing was verified"
         end
 
-        def no_key
-          "#{PREFIX} UNVERIFIABLE — no ledger key configured; nothing was verified"
-        end
+        def no_key = "#{PREFIX} UNVERIFIABLE — no ledger key configured; nothing was verified"
 
+        # The purge clause leads here too (FR-011), but the uncovered count stays as 0.6.0 wrote it.
         def unverifiable
-          "#{PREFIX} UNVERIFIABLE — #{UnverifiableText.new(@v)}; " \
+          "#{PREFIX} UNVERIFIABLE — #{UnverifiableText.new(@v)}; #{RetentionText.new(@v).clause}" \
             "#{number(@v.uncovered_now)} earlier entries not covered; #{anchor_text}"
         end
 
+        # After a purge, what it removed comes first (specs/005 FR-011): no line says what was
+        # verified without saying what was purged before it.
         def uncovered
-          parts = ["#{number(@v.uncovered_now)} earlier entries not covered"]
+          retention = RetentionText.new(@v)
+          parts = [retention.clause, "#{number(@v.uncovered_now)} earlier entries not covered"]
           at_genesis = @v.uncovered_at_genesis
-          parts << " (#{number(at_genesis)} when the chain started)" if at_genesis
+          if at_genesis
+            parts << " (#{number(at_genesis)} when the chain started#{retention.pre_chain})"
+          end
           unless @v.unchained_at_genesis.to_i.zero?
             parts << "; #{number(@v.unchained_at_genesis)} unchained entries from before the " \
                      "chain started, not covered"
@@ -96,9 +100,7 @@ module Reeve
           parts.join
         end
 
-        def totals
-          "  totals: #{@v.totals.map { |kind, count| "#{kind} #{count}" }.join(', ')}"
-        end
+        def totals = "  totals: #{@v.totals.map { |kind, count| "#{kind} #{count}" }.join(', ')}"
 
         def more(listed, limit)
           remaining = listed.size - limit
@@ -116,11 +118,15 @@ module Reeve
         end
 
         def label(found)
-          return "checkpoint ##{number(found.checkpoint)}" if found.checkpoint
-
-          sequence = found.sequence
           return "invocation #{found.invocation_id}" if found.invocation_id
-          return "epoch #{found.epoch}" if sequence.nil? && found.epoch
+          return "checkpoint ##{number(found.checkpoint)}" if found.checkpoint
+          return "retention #{found.retention}" if found.retention
+          return "epoch #{found.epoch}" if found.sequence.nil? && found.epoch
+
+          position(found.sequence)
+        end
+
+        def position(sequence)
           return "—" if sequence.nil?
           return "##{range(sequence)}" if sequence.is_a?(Range)
 
@@ -145,7 +151,8 @@ module Reeve
         def initialize(verification)
           @v = verification
           unknown = verification.breaks.select { |found| found.kind == :unknown_key }
-          @signed, @checkpoints = unknown.partition { |found| found.checkpoint.nil? }
+          @checkpoints, unknown = unknown.partition(&:checkpoint)
+          @records, @signed = unknown.partition(&:retention)
         end
 
         def to_s
@@ -160,12 +167,15 @@ module Reeve
         def unchecked(rows)
           parts = []
           parts << "#{Report.number(rows)} entries signed by #{missing(@signed)}" if @signed.any?
-          if @checkpoints.any?
-            count = @checkpoints.size
-            parts << "#{Report.number(count)} checkpoint#{'s' unless count == 1} signed by " \
-                     "#{missing(@checkpoints)}"
-          end
+          parts << other("checkpoint", @checkpoints) if @checkpoints.any?
+          parts << other("retention record", @records) if @records.any?
           parts.join("; ")
+        end
+
+        # Not entries, so named apart and not counted as rows.
+        def other(noun, found)
+          count = found.size
+          "#{Report.number(count)} #{noun}#{'s' unless count == 1} signed by #{missing(found)}"
         end
 
         # The genesis is position 0 and is not an entry.
@@ -183,6 +193,35 @@ module Reeve
           return "—" if @v.covered.nil?
 
           "#{Report.number(@v.covered.first)}–#{Report.number(@v.covered.last)}"
+        end
+      end
+
+      # What the ledger's purges removed, in words (specs/005 FR-011): the clause that leads the
+      # coverage on every walked summary line, and the pre-chain rows a purge removed.
+      class RetentionText
+        def initialize(verification)
+          @retention = verification.retention
+          @awaiting = verification.awaiting_purge.to_i
+        end
+
+        def clause
+          boundary = @retention&.boundary
+          return "" if boundary.nil?
+
+          text = "1–#{Report.number(boundary.through_sequence)} purged (retention record " \
+                 "#{boundary.purge}, #{boundary.purged_at.utc.strftime('%Y-%m-%d')}); "
+          text += "#{Report.number(@awaiting)} entries awaiting purge; " if @awaiting.positive?
+          text
+        end
+
+        def pre_chain
+          purged = if @retention
+                     @retention.summaries.reject { |found| found.status == :altered }
+                               .sum(&:removed_pre_chain)
+                   else
+                     0
+                   end
+          purged.positive? ? ", #{Report.number(purged)} purged" : ""
         end
       end
 

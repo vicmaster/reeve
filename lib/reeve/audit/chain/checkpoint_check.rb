@@ -17,10 +17,7 @@ module Reeve
         LOOKUP_BATCH = 1_000
 
         Result = Struct.new(:head_sequence, :made_at, :key_id, :status, keyword_init: true) do
-          def as_json(*)
-            { "head_sequence" => head_sequence, "made_at" => made_at, "key_id" => key_id,
-              "status" => status.to_s }
-          end
+          def as_json(*) = to_h.transform_keys(&:to_s).merge("status" => status.to_s)
         end
 
         # The break each failing status is reported as.
@@ -31,9 +28,11 @@ module Reeve
         NO_CHAIN = "the ledger has no chain, but this checkpoint saw it reach %s"
         NO_RECORD = "its genesis cannot be checked: the chain record is missing"
         OTHER_CHAIN = "names another chain: its genesis is not this ledger's"
-        EPOCH_GONE = "names epoch %d, which the ledger no longer has"
-        EPOCH_CHANGED = "names epoch %d, whose record is not the one it saw"
+        EPOCH = "names epoch %d, %s"
+        CHANGED = "whose record is not the one it saw"
+        GONE = "which the ledger no longer has"
         REMOVED = "the head is at %s; entries the checkpoint saw were removed"
+        BOUNDARY = "is at the purge boundary, but names another digest than the retention record"
 
         # `report` receives (kind, sequence, detail, invocation_id, key_id, checkpoint:).
         def initialize(entry_class:, keyring:, report:)
@@ -46,29 +45,41 @@ module Reeve
         # (the later read, so an entry written during the walk is not "not reached"); `epochs`
         # the epoch records the verifier loaded. `chained` says whether the ledger has a chain
         # at all. Returns one Result per checkpoint, in the order given.
-        def call(checkpoints, record:, head:, epochs:, chained: true)
+        #
+        # `floor` is the latest retention record (specs/005): a checkpoint below it saw entries
+        # a purge removed, and is `purged`; the one at it is checked against the record.
+        def call(checkpoints, record:, head:, epochs:, chained: true, floor: nil)
           genuine = checkpoints.select { |checkpoint| checkpoint.signed_by(keyring) == :valid }
           digests = chained ? digests_at(genuine.map(&:head_sequence)) : {}
           context = { record: record, head: head, epochs: epochs.to_h { |e| [e.epoch, e] },
-                      digests: digests, chained: chained }
-          checkpoints.map { |checkpoint| result(checkpoint, judge(checkpoint, **context)) }
+                      digests: digests, chained: chained, floor: floor }
+          checkpoints.map do |checkpoint|
+            Result.new(head_sequence: checkpoint.head_sequence, made_at: checkpoint.made_at,
+                       key_id: checkpoint.key_id, status: judge(checkpoint, **context))
+          end
         end
 
         private
 
         attr_reader :entry_class, :keyring
 
-        def result(checkpoint, status)
-          Result.new(head_sequence: checkpoint.head_sequence, made_at: checkpoint.made_at,
-                     key_id: checkpoint.key_id, status: status)
-        end
-
-        def judge(checkpoint, record:, head:, epochs:, digests:, chained:)
+        def judge(checkpoint, record:, head:, epochs:, digests:, chained:, floor:)
           signature(checkpoint) ||
             chain(checkpoint, record, chained) ||
             epoch(checkpoint, epochs) ||
+            purged(checkpoint, floor) ||
             position(checkpoint, head, digests) ||
             :checked
+        end
+
+        # At or below the latest purge's boundary (specs/005 amendment 4).
+        def purged(checkpoint, floor)
+          return if floor.nil? || checkpoint.head_sequence > floor.through_sequence
+          return :purged if checkpoint.head_sequence < floor.through_sequence
+
+          return :checked if checkpoint.head_digest == floor.through_digest
+
+          flag(:mismatch, checkpoint, BOUNDARY)
         end
 
         def signature(checkpoint)
@@ -98,7 +109,7 @@ module Reeve
           number = checkpoint.epoch
           return if number.nil? || epochs[number]&.epoch_digest == checkpoint.epoch_digest
 
-          flag(:mismatch, checkpoint, format(epochs[number] ? EPOCH_CHANGED : EPOCH_GONE, number))
+          flag(:mismatch, checkpoint, format(EPOCH, number, epochs[number] ? CHANGED : GONE))
         end
 
         def position(checkpoint, head, digests)

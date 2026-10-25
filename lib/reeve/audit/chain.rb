@@ -36,6 +36,8 @@ module Reeve
     # stays locked until that transaction ends, so every other guarded call waits behind it.
     # IsolatedRecorder holds it for one insert.
     class Chain
+      extend Entrypoints
+
       TABLE = "reeve_audit_chains"
 
       COLUMNS = %w[chain_sequence chain_key_id chain_digest chain_epoch].freeze
@@ -71,12 +73,6 @@ module Reeve
       # returns a Rotation saying what happened. `bin/rails reeve:rotate_ledger_key` runs it.
       def self.rotate_key!(accept_unverifiable: false, entry_class: Entry)
         new(entry_class: entry_class).rotate_key!(accept_unverifiable: accept_unverifiable)
-      end
-
-      # Makes a checkpoint of where the chain has reached and hands it to `anchor` (specs/004);
-      # returns a CheckpointResult. `bin/rails reeve:checkpoint_ledger` runs it.
-      def self.checkpoint!(entry_class: Entry, anchor: Reeve.config.ledger_anchor)
-        CheckpointResult.make!(entry_class: entry_class, anchor: anchor)
       end
 
       def initialize(entry_class: Entry, keyring: nil)
