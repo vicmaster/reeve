@@ -392,8 +392,27 @@ configured key. Verification is INTACT and reports the pre-epoch range separatel
   INTACT.
 - **SC-003**: No legitimate sequence of operations in User Stories 1, 4 and 5 (rotation, rolling
   deploy, task re-runs, upgrade) produces a BROKEN report.
-- **SC-004**: Write overhead stays within specs/002's measured budget plus one indexed point
-  read per chained write.
+- **SC-004** *(measured 2026-10-25: met on all three engines; see Measurements below)*: Write
+  overhead stays within specs/002's measured budget plus one indexed point read per chained
+  write.
+
+### Measurements
+
+`spec/reeve/audit/chain/benchmark_spec.rb` ("ledger write cost"), median and p95 of 1,000
+uncontended writes. SQLite and PostgreSQL: developer laptop (Apple Silicon), local databases,
+five interleaved rounds per version, the median of the five reported. 0.5.0 is commit 752ab71
+(0.5.0's code plus the benchmark). MySQL: CI's benchmark step, the median over runs (0.5.0: 1
+run, 0.6.0: 4, 0.7.0: 5); shared runners are noisy, so its deltas are rough.
+
+| Engine | 0.5.0 | 0.6.0 (chained) | 0.7.0 (epochs) | 0.7.0 vs 0.6.0 | 0.7.0 vs 0.5.0 (budget 5 ms) |
+|---|---|---|---|---|---|
+| SQLite | 0.99 ms (p95 1.63) | 1.76 ms (p95 2.56) | 1.87 ms (p95 2.70) | +0.12 ms | +0.88 ms |
+| PostgreSQL | 1.59 ms (p95 2.35) | 2.97 ms (p95 4.44) | 3.35 ms (p95 4.73) | +0.38 ms | +1.76 ms |
+| MySQL (CI) | 1.45 ms (p95 2.32) | 4.05 ms | 4.70 ms (p95 5.76) | ~+0.65 ms | ~+3.25 ms |
+
+The epoch read costs 0.1 to 0.4 ms locally, the size of one indexed point read, so no
+per-process cache is needed. MySQL has the least headroom: chaining itself (0.6.0) already
+adds about 2.6 ms there on CI, against 0.5 to 0.9 ms on the local engines.
 - **SC-005**: An operator can perform a rotation from the CHANGELOG upgrade notes alone (checked
   by a cold read: correct commands, in the correct order, with the old key retained).
 - **SC-006**: Full suite green on SQLite, and on PostgreSQL and MySQL where CI runs them.
