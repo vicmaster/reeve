@@ -34,6 +34,17 @@ Amendment 1.0.1 (2026-08-11) — PATCH, naming and platform floor only:
   of the Rails install base. README states that maintained Rails is assumed for anything
   security-relevant.
 - No principle added, removed, or redefined; governance unchanged.
+
+Amendment 1.1.0 (2026-10-25) — MINOR, materially expanded guidance in Principle II:
+- Principle II allows one way to remove entries: an operator-run retention purge
+  (specs/005), behind a verified, externally anchored checkpoint, on a database role the
+  application does not use, leaving a signed retention record. Application code still has
+  no update or delete API for entries.
+- Rationale: the ledger otherwise grows forever, and hosts with a retention obligation
+  deleted rows by hand, which breaks the chain and leaves no proof the removal was
+  legitimate. The exception is narrow enough that every removal remains provable.
+- Approved by the maintainer, 2026-10-25 (spec 005 clarification Q1).
+- Template alignment: no template changes required.
 -->
 
 # reeve Constitution
@@ -62,12 +73,20 @@ one request becomes thousands of unnoticed exposures under an agent.
 Every guarded invocation MUST append one ledger entry recording, at minimum: agent,
 principal, tool, arguments, identifiers of records returned, the allow/deny outcome, and
 the specific rule that produced it. The ledger is append-only: the library exposes no
-update or delete API for entries, and both allowed and denied calls are recorded. Audit
-writes MUST NOT be silently swallowed — a failure to record is a failure of the call,
-unless the host has explicitly opted into a degraded mode.
+update or delete API for entries to application code, and both allowed and denied calls are
+recorded. Audit writes MUST NOT be silently swallowed — a failure to record is a failure of
+the call, unless the host has explicitly opted into a degraded mode.
+
+The one exception is retention. Entries MAY be removed only by an operator-run purge that
+removes a prefix of the chain ending at a checkpoint the host's anchor holds, after
+verifying that prefix intact, over a database connection the application itself does not
+use, and only after writing a signed record of what it removes. A removal without such a
+record MUST be reported as tampering.
 
 *Rationale*: The question after an incident is "why did the AI expose that?" That must be
-answerable with a query, not an inference from application logs.
+answerable with a query, not an inference from application logs. Retention keeps the ledger
+bounded without making that answer unprovable: what was removed is recorded, verified first,
+and witnessed outside the database.
 
 ### III. Provable by Test (NON-NEGOTIABLE)
 
@@ -172,4 +191,4 @@ III, and V explicitly; a violation of any NON-NEGOTIABLE principle blocks the me
 Complexity that appears to violate Principle IV or VI must be justified in the plan's
 Complexity Tracking section or removed.
 
-**Version**: 1.0.1 | **Ratified**: 2026-08-11 | **Last Amended**: 2026-08-11
+**Version**: 1.1.0 | **Ratified**: 2026-08-11 | **Last Amended**: 2026-10-25
