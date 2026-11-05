@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "securerandom"
+require "tmpdir"
+require "fileutils"
 require_relative "../support/ledger"
 
 # T002 / SC-005: what one ledger write costs, measured before chaining exists, so the
@@ -155,9 +157,85 @@ RSpec.describe "verifying a large ledger", :benchmark_large do
     expect(seconds).to be < 1
   end
 
-  # specs/005 SC-004: a purge of a million entries holds no lock writers queue on. A writer
-  # appends throughout; its slowest write is reported beside the purge's time, and verification
-  # afterwards walks only what the writer added.
+  WRITER = File.expand_path("../support/writer.rb", __dir__)
+
+  def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+  # A writer in a process of its own (specs/005 writer-wait.md): a thread here would share the
+  # GVL with the purge's HMAC work, and its slowest write would not be a database wait.
+  def spawn_writer(output)
+    env = { "REEVE_WRITER_DB" => ActiveRecord::Base.connection_db_config.configuration_hash.to_json,
+            "REEVE_WRITER_KEY" => Reeve.config.ledger_key }
+    Process.spawn(env, RbConfig.ruby, "-I", File.expand_path("../../../../lib", __dir__), WRITER, output)
+  end
+
+  # Each complete write as [started, seconds]; raises with the writer's error if it wrote one.
+  def writes(output)
+    return [] unless File.exist?(output)
+
+    lines = File.read(output).lines.select { |line| line.end_with?("\n") }.map(&:chomp)
+    error = lines.index { |line| line.start_with?("error ") }
+    raise "writer failed: #{lines[error..].join("\n")}" if error
+
+    lines.map { |line| line.split.map { |value| Float(value) } }
+  end
+
+  # Raises at once, with the writer's own error where it wrote one, if the writer has exited.
+  def expect_writing(pid, output)
+    status = Process.waitpid2(pid, Process::WNOHANG)&.last
+    return unless status
+
+    writes(output)
+    raise "writer exited (#{status.inspect}); anything it printed is in the output above"
+  end
+
+  def await_first_write(pid, output, seconds: 60)
+    deadline = now + seconds
+    while writes(output).empty?
+      expect_writing(pid, output)
+      raise "writer made no write in #{seconds} s" if now > deadline
+
+      sleep 0.05
+    end
+  end
+
+  def stop_writer(pid, seconds: 30)
+    Process.kill("TERM", pid)
+    deadline = now + seconds
+    until (status = Process.waitpid2(pid, Process::WNOHANG)&.last)
+      raise "writer did not stop in #{seconds} s" if now > deadline
+
+      sleep 0.05
+    end
+    status
+  end
+
+  # A writer left running by a failed example is killed, not left writing into the next one.
+  # Waited for first: a pid already reaped raises ECHILD, so one the system has since reused
+  # is never signalled.
+  def reap(pid)
+    return if Process.waitpid(pid, Process::WNOHANG)
+
+    Process.kill("KILL", pid)
+    Process.wait(pid)
+  rescue Errno::ECHILD
+    nil
+  end
+
+  def latency(writes)
+    sorted = writes.map { |_, seconds| seconds * 1000 }.sort
+    format("%<n>d writes, median %<median>.1f ms, p99 %<p99>.1f ms, max %<max>.1f ms",
+           n: sorted.size, median: percentile(sorted, 0.5), p99: percentile(sorted, 0.99),
+           max: sorted.last.to_f)
+  end
+
+  def percentile(sorted, fraction)
+    sorted.empty? ? 0.0 : sorted[((sorted.size - 1) * fraction).round]
+  end
+
+  # specs/005 SC-004: a purge of a million entries holds no lock writers queue on. A writer in
+  # another process appends alone for a baseline, then throughout the purge; both latencies are
+  # reported beside the purge's time, and verification afterwards walks only what it added.
   it "purges 1,000,000 entries while writes continue, and verifies only the rest" do
     size = Integer(ENV.fetch("REEVE_PURGE_SIZE", "1000000"))
     build_chain(size)
@@ -165,32 +243,38 @@ RSpec.describe "verifying a large ledger", :benchmark_large do
     Reeve.config.ledger_retention_connection = Ledger.retention_connection
     Reeve::Audit::Chain.checkpoint!
 
-    stop = false
-    waits = []
-    writer = Thread.new do
-      chain = Reeve::Audit::Chain.new(entry_class: Reeve::Audit::Entry)
-      until stop
-        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        chain.append!(invocation_id: SecureRandom.uuid, occurred_at: Time.now, agent_id: "a",
-                      tool_name: "t", arguments: {}, outcome: "allow", rule: "r", record_ids: [],
-                      guard: "policy", contract_version: Reeve::Audit::CONTRACT_VERSION)
-        waits << (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
-      end
-    end
-    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    directory = Dir.mktmpdir("reeve-writer")
+    output = File.join(directory, "writes")
+    pid = spawn_writer(output)
+    await_first_write(pid, output)
+    sleep 3
+    expect_writing(pid, output)
+    purge_started = now
     result = Reeve::Audit::Chain.purge!(through: size, no_archive: true, confirm: true)
-    seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-    stop = true
-    writer.join
+    purge_ended = now
+    expect_writing(pid, output)
+    status = stop_writer(pid)
+    pid = nil
 
+    all = writes(output)
+    expect(status).to be_success
     expect(result).to be_purged, result.to_s
+    # The first write opens the connection and reads the schema, so it is no baseline.
+    baseline = all.drop(1).select { |started, _| started < purge_started }
+    during = all.select { |started, _| started >= purge_started && started < purge_ended }
+    expect(during).not_to be_empty, "no write started during the purge; it measured nothing"
     after = Reeve::Audit::Chain.verify(checkpoints: [])
     expect(after.status).to eq(:intact)
-    expect(after.covered).to eq((size + 1)..(size + waits.size))
+    expect(after.covered).to eq((size + 1)..(size + all.size))
     RSpec.configuration.reporter.message(
-      format("purge (%<db>s, %<size>d entries): %<s>.1f s; %<n>d writes during it, slowest %<ms>.1f ms",
-             db: SpecDatabase.adapter, size: size, s: seconds, n: waits.size, ms: waits.max.to_f * 1000)
+      format("purge (%<db>s, %<size>d entries): %<s>.1f s; writer in its own process: " \
+             "baseline %<baseline>s; during the purge %<during>s",
+             db: SpecDatabase.adapter, size: size, s: purge_ended - purge_started,
+             baseline: latency(baseline), during: latency(during))
     )
+  ensure
+    reap(pid) if pid
+    FileUtils.rm_rf(directory) if directory
   end
 
   it "verifies 100,000 and 1,000,000 entries, reporting time and peak memory" do

@@ -302,13 +302,20 @@ from 1 to the boundary, ending at the boundary checkpoint's digest. Edit one lin
 - **SC-002**: Every case in User Story 2 is BROKEN in 100% of tests, each beside its legitimate
   twin, which is INTACT.
 - **SC-003**: Every refusal in User Story 3 leaves the ledger byte-identical.
-- **SC-004** *(measured 2026-10-25: met as designed, with a caveat. 1,000,000 entries purged in
-  331 s on SQLite and 163 s on PostgreSQL (no archive), verification INTACT afterwards over only
-  the entries written during the purge. The purge never takes the chain record's lock. A writer
-  thread in the same process kept writing throughout (95,366 writes on SQLite, slowest 441 ms;
-  2,970 on PostgreSQL, slowest 1,774 ms), but it shares Ruby's GVL with the purge's HMAC work,
-  so those worst cases are not clean database waits; a writer in a separate process would
-  measure that.)*: Purging 1,000,000 entries completes without holding the chain's lock for longer
+- **SC-004** *(measured 2026-10-25, writer re-measured out of process 2026-11-05: met.
+  The purge never takes the chain record's lock, and verification afterwards is INTACT over only
+  the entries written during the purge. 2026-11-05, 1,000,000 entries, no archive, a writer in
+  a separate process (writer-wait.md), shared machine at load 6 to 28:
+  SQLite: purge 194.7 s; writer alone median 1.6 ms, p99 5.1 ms, max 10.7 ms; during the purge
+  80,370 writes, median 1.8 ms, p99 12.3 ms, max 207.0 ms.
+  PostgreSQL: purge 179.5 s; writer alone median 2.4 ms, p99 3.7 ms, max 6.0 ms; during the
+  purge 57,501 writes, median 2.6 ms, p99 7.1 ms, max 252.5 ms.
+  Writers do not queue behind the purge: the median barely moves and p99 stays within 2.5 times
+  the baseline. The single slowest write on each engine is not explained by this run; the delete
+  batch's own time was not measured. MySQL is unmeasured (no local server; CI does not run
+  `:benchmark_large`). The 2026-10-25 figures came from a writer thread sharing Ruby's GVL with
+  the purge (slowest 441 ms SQLite, 1,774 ms PostgreSQL) and are superseded.)*: Purging
+  1,000,000 entries completes without holding the chain's lock for longer
   than one chained write at a time, and verification after it walks only the remaining entries.
 - **SC-005**: An operator can configure, dry-run, run and verify a purge from the README and
   CHANGELOG alone (checked by a cold read).
