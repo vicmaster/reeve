@@ -67,7 +67,8 @@ module SpecDatabase
     # own in-memory database, and the concurrency specs run invocations on their own
     # threads, which check out their own connections.
     def sqlite_configuration
-      at_exit { FileUtils.rm_f(SQLITE_PATH) }
+      # WAL mode (ActiveRecord 8's default) keeps -wal and -shm files beside the database.
+      at_exit { FileUtils.rm_f(["", "-wal", "-shm"].map { |suffix| "#{SQLITE_PATH}#{suffix}" }) }
       # timeout: what every generated Rails database.yml sets. Without it SQLite's busy
       # timeout is zero, and a writer that finds the write lock taken fails at once rather
       # than waiting its turn — which the chain's concurrency spec exists to prove it does.
