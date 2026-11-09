@@ -194,6 +194,45 @@ RSpec.describe "Reeve::Checks.run_all", :reeve_fixtures do
     end
   end
 
+  # The suite runs LedgerChain anchored only when the host says so: an anchor configured for
+  # production must not receive a test run's checkpoints (specs/004 research R8).
+  describe "config.compliance_anchored" do
+    let(:anchor) { Ledger::RecordingAnchor.new }
+
+    def ledger_chain
+      report = Reeve::Checks.run(Reeve::Checks::LedgerChain, principals: [alice, bob],
+                                                             tools: [ReeveFixtures::CompliantInvoiceTool])
+      report.results.first
+    end
+
+    it "runs LedgerChain anchored when set, publishing its own checkpoint" do
+      Reeve.config.ledger_anchor = anchor
+      Reeve.config.compliance_anchored = true
+
+      result = ledger_chain
+
+      expect(result).to be_passed
+      expect(result.message).to include("anchored at #2")
+      expect(anchor.lines.size).to eq(1)
+    end
+
+    it "fails LedgerChain, naming config.ledger_anchor, when set with no anchor" do
+      Reeve.config.compliance_anchored = true
+
+      result = ledger_chain
+
+      expect(result).to be_failed
+      expect(result.message).to include("config.ledger_anchor")
+    end
+
+    it "leaves a configured anchor untouched when unset" do
+      Reeve.config.ledger_anchor = anchor
+
+      expect(ledger_chain).to be_passed
+      expect(anchor.lines).to be_empty
+    end
+  end
+
   # The plain-Ruby path the contract promises: no test framework anywhere in this example.
   it "is usable as a CI gate on its own" do
     report = run_all(tools: [ReeveFixtures::LeakyInvoiceTool])

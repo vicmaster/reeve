@@ -232,9 +232,26 @@ RSpec.describe Reeve::Configuration do
       expect(config.to_h.keys).to contain_exactly(
         :principal_resolver, :unguarded_tools, :audit_failure_mode, :redact_arguments,
         :max_recorded_ids, :policy_adapter, :default_action, :audit_recorder, :logger,
-        :compliance_principals, :compliance_tools, :inventory, :ledger_key,
-        :retired_ledger_keys, :ledger_anchor, :ledger_retention_connection
+        :compliance_principals, :compliance_tools, :compliance_anchored, :inventory,
+        :ledger_key, :retired_ledger_keys, :ledger_anchor, :ledger_retention_connection
       )
+    end
+  end
+
+  describe "#compliance_anchored=" do
+    it "is off by default" do
+      expect(config.compliance_anchored).to be(false)
+    end
+
+    it "accepts true" do
+      config.compliance_anchored = true
+
+      expect(config.compliance_anchored).to be(true)
+    end
+
+    it "rejects anything but true or false, naming the setting" do
+      expect { config.compliance_anchored = "yes" }
+        .to raise_error(ArgumentError, /compliance_anchored must be true or false/)
     end
   end
 

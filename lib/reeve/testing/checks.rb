@@ -115,7 +115,8 @@ module Reeve
         when "ContractVersion"    then ContractVersion.new(ledger: ledger)
         when "EndpointCoverage"   then EndpointCoverage.new(tools: tools, ledger: ledger)
         when "LedgerChain"        then LedgerChain.new(tools: tools, principals: principals,
-                                                       invoke: invoke, ledger: ledger)
+                                                       invoke: invoke, ledger: ledger,
+                                                       anchored: Reeve.config.compliance_anchored)
         when "PrincipalRequired"  then PrincipalRequired.new(**common)
         when "CrossPrincipalLeak" then CrossPrincipalLeak.new(principals: Array(principals),
                                                               **common)
