@@ -4,7 +4,14 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.9.0] - 2026-11-09
+
+The compliance suite can now prove the ledger anchor works, with no test of your own. No
+audit-entry contract change: it stays `4`.
+
+### Upgrading from 0.8.0
+
+`bundle update reeve`. No migration, and nothing changes unless you turn the new setting on.
 
 ### Added
 
