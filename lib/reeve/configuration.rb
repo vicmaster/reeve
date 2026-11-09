@@ -24,8 +24,8 @@ module Reeve
     SETTINGS = %i[
       principal_resolver unguarded_tools audit_failure_mode redact_arguments
       max_recorded_ids policy_adapter default_action audit_recorder logger
-      compliance_principals compliance_tools inventory ledger_key retired_ledger_keys
-      ledger_anchor ledger_retention_connection
+      compliance_principals compliance_tools compliance_anchored inventory ledger_key
+      retired_ledger_keys ledger_anchor ledger_retention_connection
     ].freeze
 
     # Shown by #to_h and #inspect as fingerprints. A configuration object gets printed —
@@ -46,6 +46,7 @@ module Reeve
       @logger             = nil
       @compliance_principals = nil
       @compliance_tools = nil
+      @compliance_anchored = false
       @inventory = nil
       @ledger_key = nil
       @retired_ledger_keys = []
@@ -147,6 +148,20 @@ module Reeve
       end
 
       @compliance_principals = principals
+    end
+
+    # Whether the compliance suite's LedgerChain also proves the anchor round-trips: it makes
+    # a checkpoint, publishes it through ledger_anchor, and reads it back. Off by default, so
+    # a suite never publishes to an anchor it was not told to use. Point the test
+    # environment's anchor at a scratch file before turning it on.
+    #
+    #   config.compliance_anchored = true
+    def compliance_anchored=(anchored)
+      unless [true, false].include?(anchored)
+        raise ArgumentError, "compliance_anchored must be true or false, got #{anchored.inspect}"
+      end
+
+      @compliance_anchored = anchored
     end
 
     def unguarded_tools=(mode)

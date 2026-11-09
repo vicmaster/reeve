@@ -330,26 +330,23 @@ Reeve::Audit::Chain.checkpoint!.checkpoint.to_line            # => "{\"epoch\":1
 Reeve::Audit::Chain.verify(checkpoints: lines).anchored_at    # the highest checkpoint that held
 ```
 
-*In CI.* The `LedgerChain` check the compliance suite runs never reads the anchor, so
-configuring one does not change it: a test database is emptied between runs, and old
-checkpoints name ledgers that are gone. To prove the anchor works, run the anchored variant as
-a test of its own, with the test environment's anchor pointed at a scratch file such as
-`Rails.root.join("tmp/ledger.checkpoints")`. It makes a checkpoint, reads it back through the
-anchor, and verifies against that one alone:
+*In CI.* The compliance suite's `LedgerChain` check never reads the anchor unless told to: a
+test database is emptied between runs, and old checkpoints name ledgers that are gone. To
+prove the anchor works, point the test environment's anchor at a scratch file and turn on
+`compliance_anchored`, in the initializer after the anchor line above. The check then makes a checkpoint, reads it back through the anchor,
+and verifies against that one alone. With no anchor configured, it fails and names the
+setting.
 
 ```ruby
-# RSpec
-it "anchors the ledger" do
-  result = Reeve::Checks::LedgerChain.new(anchored: true).call
-  expect(result).to be_passed, result.message
-end
-
-# Minitest
-def test_anchors_the_ledger
-  result = Reeve::Checks::LedgerChain.new(anchored: true).call
-  assert result.passed?, result.message
+if Rails.env.test?
+  Reeve.config.ledger_anchor =
+    Reeve::Audit::FileAnchor.new(Rails.root.join("tmp/ledger.checkpoints"))
+  Reeve.config.compliance_anchored = true
 end
 ```
+
+Outside the suite, the same check runs on its own:
+`Reeve::Checks::LedgerChain.new(anchored: true).call`.
 
 **Purging old entries.** The ledger grows until you purge it. Deleting rows by hand breaks
 the chain and is reported as tampering, so reeve purges for you: the oldest entries, up to a

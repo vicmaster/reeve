@@ -4,6 +4,14 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
+## [Unreleased]
+
+### Added
+
+- `config.compliance_anchored`: when `true`, the compliance suite's `LedgerChain` check also
+  proves the ledger anchor round-trips, as `LedgerChain.new(anchored: true)` does on its own.
+  Off by default, so a suite never publishes to an anchor it was not told to use.
+
 ## [0.8.0] - 2026-10-25
 
 Two additions to the tamper-evident ledger: **anchoring**, checkpoints of the chain kept
