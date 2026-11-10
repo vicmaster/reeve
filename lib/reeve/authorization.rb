@@ -49,7 +49,11 @@ module Reeve
 
     private
 
+    # A tool class whose library runs it some other way (a class-level `call`, a
+    # `perform` behind callbacks) says how through `reeve_run`, which the adapters define.
     def run(tool, arguments)
+      return tool.reeve_run(arguments) if tool.respond_to?(:reeve_run)
+
       instance = tool.is_a?(Class) ? tool.new : tool
       arguments.empty? ? instance.call : instance.call(**arguments)
     end

@@ -26,9 +26,13 @@ module Reeve
 
       # Installs the extension into every tool defined from here on.
       module Inheritance
+        def self.wrap(klass)
+          klass.prepend(ToolExtension) unless Integrations.prepended?(klass, ToolExtension)
+        end
+
         def inherited(subclass)
           super
-          subclass.prepend(ToolExtension)
+          Inheritance.wrap(subclass)
         end
       end
 
@@ -37,22 +41,7 @@ module Reeve
       # Idempotent: requiring "reeve/fast_mcp" twice must not stack two envelopes around
       # the same call.
       def install!(tool_base = ::FastMcp::Tool)
-        unless tool_base.include?(Reeve::Guard)
-          tool_base.include(Reeve::Guard)
-          # FastMcp::Tool carries the DSL for its subclasses; it is not itself a tool.
-          tool_base.reeve_abstract!
-        end
-
-        unless tool_base.singleton_class.include?(Inheritance)
-          tool_base.singleton_class.prepend(Inheritance)
-        end
-
-        # Tools defined before this require still get the envelope.
-        tool_base.subclasses.each do |subclass|
-          subclass.prepend(ToolExtension) unless subclass.include?(ToolExtension)
-        end
-
-        tool_base
+        Integrations.install!(tool_base, Inheritance)
       end
     end
   end

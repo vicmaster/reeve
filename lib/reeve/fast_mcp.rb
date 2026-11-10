@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../reeve"
+require_relative "integrations"
 
 begin
   require "fast_mcp"
@@ -13,12 +13,5 @@ end
 
 require_relative "integrations/fast_mcp/context_builder"
 require_relative "integrations/fast_mcp/tool_extension"
-
-module Reeve
-  # Adapters for the MCP server libraries reeve rides on. Each is opt-in, conditionally
-  # loaded, and never a dependency of the core (Constitution IV).
-  module Integrations
-  end
-end
 
 Reeve::Integrations::FastMcp.install!

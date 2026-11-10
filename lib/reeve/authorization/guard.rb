@@ -103,48 +103,56 @@ module Reeve
       end
     end
 
-    # The scoped relation for the invoking principal. This is how a guarded tool returns
-    # anything that is not a record: a count, a sum, a rendered summary. Computing from
-    # `scoped(...)` means the tool never held unscoped data, so the derived value is safe
-    # by construction rather than by promise (R4).
-    def scoped(model_or_relation)
-      state = Authorization::Current.state
-      raise Error, "scoped(...) may only be called inside a guarded invocation" if state.nil?
+    # `scoped` and `authorize!`, the two helpers a tool body calls. They read only the
+    # invocation in progress on this thread, never the receiver, so the same methods serve
+    # a tool whose body runs on an instance (fast-mcp, ActionMCP) and one whose body runs
+    # on the class (the official SDK, which extends a tool class with this module).
+    module Helpers
+      # The scoped relation for the invoking principal. This is how a guarded tool returns
+      # anything that is not a record: a count, a sum, a rendered summary. Computing from
+      # `scoped(...)` means the tool never held unscoped data, so the derived value is safe
+      # by construction rather than by promise (R4).
+      def scoped(model_or_relation)
+        state = Authorization::Current.state
+        raise Error, "scoped(...) may only be called inside a guarded invocation" if state.nil?
 
-      Authorization::Scoper.scoped_relation(state, model_or_relation)
+        Authorization::Scoper.scoped_relation(state, model_or_relation)
+      end
+
+      # Asks the declared policy about one record, before the tool acts on it. Returns the
+      # record so it reads inline; raises +DeniedError+ if the policy says no.
+      #
+      #   def call(id:, to:)
+      #     invoice = authorize!(Invoice.find(id))
+      #     InvoiceMailer.reminder(invoice, to).deliver_now
+      #     invoice
+      #   end
+      #
+      # The envelope authorizes before the tool runs and scopes what it returns, and between
+      # those two points a tool can do things neither of them can reach. A rolled-back write
+      # leaves no trace; a sent email does. `scoped(...)` is the answer when a tool can work
+      # from a relation; this is the answer when it cannot — when the tool holds one record
+      # and is about to do something to the world with it.
+      #
+      # The denial carries the policy's own rule, so the ledger names what refused rather
+      # than reporting the tool as broken. It names no record: an out-of-scope record and a
+      # record that does not exist have to be indistinguishable (FR-006), and a tool that
+      # reached this line has already fetched the record it must not talk about.
+      def authorize!(record)
+        state = Authorization::Current.state
+        raise Error, "authorize!(...) may only be called inside a guarded invocation" if state.nil?
+
+        decision = state.adapter.authorize(
+          principal: state.context.principal, policy: state.declaration.policy,
+          action: state.declaration.action, record: record
+        )
+        return record if decision.allowed?
+
+        raise DeniedError.from(decision, tool_name: state.context.tool_name,
+                                         principal_id: state.context.principal_id)
+      end
     end
 
-    # Asks the declared policy about one record, before the tool acts on it. Returns the
-    # record so it reads inline; raises +DeniedError+ if the policy says no.
-    #
-    #   def call(id:, to:)
-    #     invoice = authorize!(Invoice.find(id))
-    #     InvoiceMailer.reminder(invoice, to).deliver_now
-    #     invoice
-    #   end
-    #
-    # The envelope authorizes before the tool runs and scopes what it returns, and between
-    # those two points a tool can do things neither of them can reach. A rolled-back write
-    # leaves no trace; a sent email does. `scoped(...)` is the answer when a tool can work
-    # from a relation; this is the answer when it cannot — when the tool holds one record
-    # and is about to do something to the world with it.
-    #
-    # The denial carries the policy's own rule, so the ledger names what refused rather
-    # than reporting the tool as broken. It names no record: an out-of-scope record and a
-    # record that does not exist have to be indistinguishable (FR-006), and a tool that
-    # reached this line has already fetched the record it must not talk about.
-    def authorize!(record)
-      state = Authorization::Current.state
-      raise Error, "authorize!(...) may only be called inside a guarded invocation" if state.nil?
-
-      decision = state.adapter.authorize(
-        principal: state.context.principal, policy: state.declaration.policy,
-        action: state.declaration.action, record: record
-      )
-      return record if decision.allowed?
-
-      raise DeniedError.from(decision, tool_name: state.context.tool_name,
-                                       principal_id: state.context.principal_id)
-    end
+    include Helpers
   end
 end
