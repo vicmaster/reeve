@@ -81,6 +81,18 @@ RSpec.describe "README examples" do
       expect(README).to include("**Not detected**", "A leaked key", "prevents nothing")
     end
 
+    # specs/006 FR-060, FR-061: the two adapters that allow or refuse output, rather than
+    # narrow it, say so, with the one-flag weakness and what each needs to run.
+    it "states what the SDK and ActionMCP adapters guarantee, and what they do not" do
+      lib = File.expand_path("../lib/reeve", __dir__)
+
+      expect(README).to include('require "reeve/mcp"', 'require "reeve/action_mcp"')
+      expect(File).to exist(File.join(lib, "mcp.rb")).and exist(File.join(lib, "action_mcp.rb"))
+      expect(README.scan("`guard_with` plus `scoped`").size).to be >= 2
+      expect(README).to include("one flag per call", "`mcp` 1.x", "`actionmcp` 0.200 to 0.203",
+                                "Rails 8.1 and Ruby 3.2+")
+    end
+
     it "states the platform floor the gemspec enforces" do
       expect(README).to include("Ruby 3.0+")
       expect(Gem::Specification.load("reeve.gemspec").required_ruby_version.to_s)

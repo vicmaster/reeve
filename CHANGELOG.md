@@ -4,6 +4,64 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
+## [Unreleased]
+
+Reeve now rides the official MCP SDK (`require "reeve/mcp"`) and ActionMCP
+(`require "reeve/action_mcp"`). No audit-entry contract change: it stays `4`.
+
+### Upgrading from 0.9.0
+
+`bundle update reeve`. Nothing changes unless you require the new adapter. If you do, read
+the next paragraph first.
+
+**Requiring `reeve/mcp` or `reeve/action_mcp` under the default `:deny` refuses every tool
+of that library that has no `guard_with`, on its next call, including SDK tools registered
+with `server.define_tool`.** That is deny-by-default working as documented. Set
+`config.unguarded_tools = :allow_with_warning` while you add guards, then switch back.
+
+### Added
+
+- **Official MCP SDK adapter**, `require "reeve/mcp"`, for `mcp` 1.x (verified on 1.0.0 and
+  1.9.0), on Ruby 3.0+. Every SDK tool class, block tools included, goes through the
+  envelope. `guard_with`, `redact`, `scoped` and `authorize!` are class methods on every
+  tool. A denial reaches the client as a tool error naming the rule.
+- **ActionMCP adapter**, `require "reeve/action_mcp"`, for `actionmcp` 0.200 to 0.203
+  (Rails 8.1, Ruby 3.2+). The envelope runs inside ActionMCP's error handling, so tool errors
+  and denials are recorded before ActionMCP replaces them, and what a tool renders is held
+  until the call is allowed. The principal is `ActionMCP::Current.user` through your
+  resolver; background-task calls have no user and are refused `no_principal` unless your
+  resolver finds one. The adapter reaches into ActionMCP's internals, so it refuses to load
+  on a version it was not verified against.
+- **`guard_with` plus `scoped` on both.** These tools return a finished response or render
+  content, not records, so Reeve allows or refuses the output whole; it does not narrow it.
+  The output is allowed only if the tool read through `scoped(...)` during the call. That
+  check is one flag per call: a tool that calls `scoped(Invoice)` and also renders
+  `Invoice.find(id)` passes. Fetch any other record through `authorize!`.
+- **`request:` on `Reeve.invoke` and `Inventory#dispatch`**, read by the principal resolver
+  as `context.request` and never recorded. For what identifies the human (a server context,
+  a verified token, a session) and must not land in the ledger. `metadata:` keeps its
+  meaning: recorded and redacted.
+- The testing kit runs SDK and ActionMCP tool classes with no `invoke:`, one ledger row per
+  call. A tool class can say how it is run by defining `reeve_run(arguments)`; the adapters
+  do.
+
+### Fixed
+
+- The fast-mcp adapter opened a second envelope when the call was already inside one (the
+  testing kit's default invoker, or a host that wraps `Reeve.invoke` around a fast-mcp
+  call). The second one had no principal, so the call was refused and recorded twice. It now
+  runs inside the envelope that is already open.
+
+### Known limitations
+
+- fast-mcp and the official SDK cannot share a process. fast-mcp ships `lib/mcp/tool.rb`
+  and `lib/mcp/server.rb`, the paths the SDK loads `MCP::Tool` and `MCP::Server` from, so
+  loading fast-mcp first hides the SDK's classes. `reeve/mcp` refuses to load in that case
+  and says why.
+- Every SDK block tool is a new class, and Reeve keeps every tool class it sees. A server
+  built per request that calls `define_tool` grows that list on every request; define block
+  tools once at boot with `MCP::Tool.define` and pass them in `tools:`.
+
 ## [0.9.0] - 2026-11-09
 
 The compliance suite can now prove the ledger anchor works, with no test of your own. No
