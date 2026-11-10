@@ -80,12 +80,13 @@ module Reeve
     #
     # +registered+ is not consulted. The host's own dispatcher already decided the name
     # exists; what this decides is whether reeve stands in front of it.
-    def dispatch(name, arguments: {}, principal: :unset, agent: nil, metadata: {}, &handler)
+    def dispatch(name, arguments: {}, principal: :unset, agent: nil, metadata: {}, request: {},
+                 &handler)
       name = name.to_s
       tool = routes[name]
       if tool
         return Reeve.invoke(tool: tool, arguments: arguments, principal: principal,
-                            agent: agent, metadata: metadata, &handler)
+                            agent: agent, metadata: metadata, request: request, &handler)
       end
 
       if handler.nil?
@@ -96,7 +97,7 @@ module Reeve
       return handler.call if exemption_reasons.key?(name)
 
       dispatch_unbound(name, arguments: arguments, principal: principal, agent: agent,
-                             metadata: metadata, &handler)
+                             metadata: metadata, request: request, &handler)
     end
 
     def inspect
@@ -179,10 +180,10 @@ module Reeve
     # own name and with nothing to look up. The registry answer below is what makes the
     # refusal name the real cause — the inventory, not a missing `guard_with` on a class
     # that may not exist.
-    def dispatch_unbound(name, arguments:, principal:, agent:, metadata:, &handler)
+    def dispatch_unbound(name, arguments:, principal:, agent:, metadata:, request:, &handler)
       config = Reeve.config.with_principal(principal)
       context = Context.new(tool_name: name, agent: agent, arguments: arguments,
-                            metadata: metadata)
+                            metadata: metadata, request: request)
 
       Invocation.call(context, registry: Unbound.new(name, config), config: config, &handler)
     end

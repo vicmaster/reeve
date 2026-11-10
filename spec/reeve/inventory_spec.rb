@@ -227,6 +227,23 @@ RSpec.describe Reeve::Inventory do
       expect(entries).to be_empty
     end
 
+    it "hands request data to the resolver, routed or unbound, and records none of it" do
+      seen = []
+      Reeve.configure do |c|
+        c.principal_resolver = lambda { |ctx|
+          seen << ctx.request[:token]
+          alice
+        }
+      end
+
+      subject_inventory.dispatch("search_invoices", request: { token: "tok-routed" })
+      expect { subject_inventory.dispatch("export_invoices", request: { token: "tok-unbound" }) { :unreached } }
+        .to raise_error(Reeve::DeniedError)
+
+      expect(seen).to eq(%w[tok-routed tok-unbound])
+      expect(entries.map(&:attributes).to_s).not_to include("tok-")
+    end
+
     it "needs a handler for any name it cannot run itself" do
       expect { subject_inventory.dispatch("healthcheck") }
         .to raise_error(ArgumentError, /handler block/)

@@ -25,12 +25,18 @@ module Reeve
     #
     #   Reeve.invoke(tool: InvoiceSearchTool, arguments: { query: "AC" },
     #                principal: current_user, agent: { id: "claude-desktop" })
-    def invoke(tool:, arguments: {}, principal: :unset, agent: nil, metadata: {}, &body)
+    #
+    # +metadata+ is recorded. +request+ is not: it is what the principal resolver needs to
+    # identify the human (a server context, a verified token, a session) and it is cleared
+    # when the call ends.
+    def invoke(tool:, arguments: {}, principal: :unset, agent: nil, metadata: {}, request: {},
+               &body)
       context = Context.new(
         tool_name: tool_name_for(tool),
         agent: agent,
         arguments: arguments,
-        metadata: metadata
+        metadata: metadata,
+        request: request
       )
 
       declaration = registry.guard_for(context.tool_name)

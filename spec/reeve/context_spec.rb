@@ -198,4 +198,35 @@ RSpec.describe Reeve::Context do
       expect(context.to_h[:metadata]).to eq(headers: { "X-Request-Id" => "r1" })
     end
   end
+
+  # What the resolver needs to identify the human: a server context, a verified token, a
+  # session. Never recorded, cleared when the call ends (FR-040 to FR-042).
+  describe "request data" do
+    let(:token) { { subject: "user-7", secret: "tok-SECRET" } }
+
+    it "defaults to an empty, frozen hash" do
+      expect(described_class.new(tool_name: "t").request).to eq({}).and be_frozen
+    end
+
+    it "carries what the adapter passed, with symbol keys" do
+      context = described_class.new(tool_name: "t", request: { "auth_info" => token })
+
+      expect(context.request[:auth_info]).to eq(token)
+    end
+
+    it "is absent from the audit projection and from inspect" do
+      context = described_class.new(tool_name: "t", request: { auth_info: token })
+
+      expect(context.to_h.keys).not_to include(:request)
+      expect(context.to_h.to_s).not_to include("tok-SECRET")
+      expect(context.inspect).not_to include("tok-SECRET")
+    end
+
+    it "is emptied by clear_request!" do
+      context = described_class.new(tool_name: "t", request: { auth_info: token })
+      context.clear_request!
+
+      expect(context.request).to eq({})
+    end
+  end
 end
