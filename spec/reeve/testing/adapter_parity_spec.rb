@@ -148,3 +148,63 @@ RSpec.describe "the testing kit on official SDK tools", :reeve_fixtures, if: mcp
     expect(Reeve::Testing.compliance_tools).not_to include(MCP::Tool)
   end
 end
+
+action_mcp_available = begin
+  require "action_mcp"
+  true
+rescue LoadError
+  false
+end
+
+RSpec.describe "the testing kit on ActionMCP tools", :reeve_fixtures, if: action_mcp_available do
+  let(:stranger) { Owner.new(99) }
+  let(:arguments) { { query: "" } }
+
+  before do
+    require "reeve/action_mcp"
+
+    stub_const("ActionInvoiceTool", Class.new(ActionMCP::Tool) do
+      tool_name "action_invoices"
+      property :query, type: "string"
+      guard_with ReeveFixtures::GoodInvoicePolicy
+
+      def perform
+        scoped(Invoice).where("number LIKE ?", "#{query}%").each { |i| render(text: i.number) }
+      end
+    end)
+
+    stub_const("ActionLeakyTool", Class.new(ActionMCP::Tool) do
+      tool_name "action_leaky"
+      property :query, type: "string"
+      guard_with ReeveFixtures::GoodInvoicePolicy
+
+      def perform
+        Invoice.where("number LIKE ?", "#{query}%").each { |i| render(text: i.number) }
+      end
+    end)
+
+    stub_const("ActionUnguardedTool", Class.new(ActionMCP::Tool) do
+      tool_name "action_unguarded"
+
+      def perform = render(text: "ok")
+    end)
+  end
+
+  let(:guarded) { ActionInvoiceTool }
+  let(:leaky) { ActionLeakyTool }
+  let(:unguarded) { ActionUnguardedTool }
+
+  include_examples "the testing kit on an adapter's tools"
+
+  it "raises naming the tool when the kit passes input the schema refuses" do
+    stub_const("StrictTool", Class.new(ActionMCP::Tool) do
+      tool_name "strict"
+      property :count, type: "integer", required: true
+      guard_with ReeveFixtures::GoodInvoicePolicy
+
+      def perform = render(text: count.to_s)
+    end)
+
+    expect { StrictTool.reeve_run({}) }.to raise_error(ArgumentError, /strict: invalid input/)
+  end
+end
