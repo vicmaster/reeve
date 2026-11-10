@@ -86,12 +86,8 @@ module Reeve
                  ledger: :unavailable)
         end
 
-        # The name a developer will recognise in a failure: the constant, not the
-        # snake_cased protocol name the ledger stores.
         def tool_label
-          return "the ledger" if tool.nil?
-
-          tool.respond_to?(:name) && tool.name ? tool.name : tool.to_s
+          tool.nil? ? "the ledger" : Testing.label_for(tool)
         end
 
         def declaration
