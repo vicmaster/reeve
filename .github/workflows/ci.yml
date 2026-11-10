@@ -24,6 +24,24 @@ jobs:
           bundler-cache: true
       - run: bundle exec rspec
 
+  # The adapters claim a range of each library's versions, and the matrix above installs
+  # only the newest. This proves the oldest: the SDK adapter uses the SDK's public tool
+  # interface from 1.0, and the ActionMCP adapter reaches into internals verified from
+  # 0.200.0. The Gemfile reads both pins.
+  adapter-floors:
+    name: "specs (adapter floors: mcp 1.0.0, actionmcp 0.200.0)"
+    runs-on: ubuntu-latest
+    env:
+      MCP_VERSION: "1.0.0"
+      ACTIONMCP_VERSION: "0.200.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - run: bundle exec rspec spec/reeve/integrations spec/reeve/testing/adapter_parity_spec.rb
+
   # The gem claims to work on every database ActiveRecord supports — the ledger stores
   # `invocation_id` as a string rather than a native uuid precisely so that holds. Until
   # this job existed the claim had only ever been run against SQLite, while the three
