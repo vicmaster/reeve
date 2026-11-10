@@ -13,6 +13,10 @@ module Reeve
       # impossible to forget — there is no "remember to wrap your tool" step.
       module ToolExtension
         def call(**arguments)
+          # Already inside this tool's envelope (the testing kit, or a host that wrapped
+          # Reeve.invoke around the call): run the body there, so it is recorded once.
+          return super if Integrations.inside?(self.class)
+
           attributes = ContextBuilder.attributes(self)
 
           Reeve.invoke(

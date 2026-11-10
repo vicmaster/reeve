@@ -208,3 +208,49 @@ RSpec.describe "the testing kit on ActionMCP tools", :reeve_fixtures, if: action
     expect { StrictTool.reeve_run({}) }.to raise_error(ArgumentError, /strict: invalid input/)
   end
 end
+
+fast_mcp_available = begin
+  require "fast_mcp"
+  true
+rescue LoadError
+  false
+end
+
+# SC-004: the same host-written lines against the third adapter.
+RSpec.describe "the testing kit on fast-mcp tools", :reeve_fixtures, if: fast_mcp_available do
+  let(:stranger) { Owner.new(99) }
+  let(:arguments) { { query: "" } }
+
+  before do
+    require "reeve/fast_mcp"
+
+    stub_const("FastInvoiceTool", Class.new(FastMcp::Tool) do
+      tool_name "fast_invoices"
+      description "Lists invoices"
+      guard_with ReeveFixtures::GoodInvoicePolicy
+
+      def call(query:) = Invoice.where("number LIKE ?", "#{query}%")
+    end)
+
+    stub_const("FastLeakyTool", Class.new(FastMcp::Tool) do
+      tool_name "fast_leaky"
+      description "Counts invoices"
+      guard_with ReeveFixtures::GoodInvoicePolicy
+
+      def call(query:) = Invoice.where("number LIKE ?", "#{query}%").count
+    end)
+
+    stub_const("FastUnguardedTool", Class.new(FastMcp::Tool) do
+      tool_name "fast_unguarded"
+      description "Not declared"
+
+      def call(**) = []
+    end)
+  end
+
+  let(:guarded) { FastInvoiceTool }
+  let(:leaky) { FastLeakyTool }
+  let(:unguarded) { FastUnguardedTool }
+
+  include_examples "the testing kit on an adapter's tools"
+end
