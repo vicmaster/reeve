@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "support/optional/mcp_sdk"
 require "support/optional/authorization_records"
 require "reeve/audit"
 require "reeve/audit/support/ledger"

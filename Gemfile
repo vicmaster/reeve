@@ -49,6 +49,10 @@ else
   gem "sqlite3"
 end
 
+# The official MCP SDK runs on Ruby 2.7+, so it is installed on every Ruby in the matrix.
+# MCP_VERSION pins it to the floor of the range reeve/mcp supports (the CI floor job).
+gem "mcp", ENV.fetch("MCP_VERSION", ">= 1.0")
+
 # The other two engines the gem claims to support (spec/support/optional/database.rb).
 # Installed only when asked for, because building either driver needs native client
 # libraries and the default `bundle install` should not require them:
