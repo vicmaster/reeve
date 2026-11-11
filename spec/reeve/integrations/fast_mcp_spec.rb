@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "support/optional/mcp_sdk"
 require "support/optional/authorization_records"
 require "reeve/audit"
 require "reeve/audit/support/ledger"
@@ -95,6 +96,14 @@ RSpec.describe "the fast-mcp adapter", if: fast_mcp_available do
 
       expect { invoke(tool: UnguardedMcpTool) }
         .to raise_error(Reeve::DeniedError) { |e| expect(e.rule).to eq("no_guard_declared") }
+    end
+
+    it "records a call once when the caller already opened its envelope" do
+      Reeve.invoke(tool: InvoiceListTool, principal: alice) do
+        InvoiceListTool.new(headers: {}).call
+      end
+
+      expect(Reeve::Audit::Entry.count).to eq(1)
     end
 
     it "passes the tool's arguments through untouched" do

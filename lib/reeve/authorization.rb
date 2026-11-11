@@ -25,12 +25,18 @@ module Reeve
     #
     #   Reeve.invoke(tool: InvoiceSearchTool, arguments: { query: "AC" },
     #                principal: current_user, agent: { id: "claude-desktop" })
-    def invoke(tool:, arguments: {}, principal: :unset, agent: nil, metadata: {}, &body)
+    #
+    # +metadata+ is recorded. +request+ is not: it is what the principal resolver needs to
+    # identify the human (a server context, a verified token, a session) and it is cleared
+    # when the call ends.
+    def invoke(tool:, arguments: {}, principal: :unset, agent: nil, metadata: {}, request: {},
+               &body)
       context = Context.new(
         tool_name: tool_name_for(tool),
         agent: agent,
         arguments: arguments,
-        metadata: metadata
+        metadata: metadata,
+        request: request
       )
 
       declaration = registry.guard_for(context.tool_name)
@@ -49,7 +55,11 @@ module Reeve
 
     private
 
+    # A tool class whose library runs it some other way (a class-level `call`, a
+    # `perform` behind callbacks) says how through `reeve_run`, which the adapters define.
     def run(tool, arguments)
+      return tool.reeve_run(arguments) if tool.respond_to?(:reeve_run)
+
       instance = tool.is_a?(Class) ? tool.new : tool
       arguments.empty? ? instance.call : instance.call(**arguments)
     end

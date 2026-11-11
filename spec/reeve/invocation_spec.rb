@@ -246,6 +246,54 @@ RSpec.describe Reeve::Invocation do
     end
   end
 
+  # FR-040 to FR-042: the resolver reads request data; nothing records it, and nothing of
+  # it survives the call, however the call ends.
+  describe "request data" do
+    let(:secret) { "tok-#{SecureRandom.hex(4)}" }
+    let(:user) { Struct.new(:id, :email).new(7, "seven@example.test") }
+    let(:request) { { auth_info: { token: secret }, server_context: { user: user } } }
+
+    it "reaches the principal resolver" do
+      seen = nil
+      Reeve.configure do |c|
+        c.principal_resolver = lambda { |ctx|
+          seen = ctx.request.dup
+          principal
+        }
+      end
+
+      invoke(context(request: request))
+
+      expect(seen).to eq(request)
+    end
+
+    it "is never written to the ledger" do
+      invoke(context(request: request, metadata: { client: { name: "c" } }))
+
+      expect(recorder.entry.to_s).not_to include(secret, "seven@example.test")
+      expect(recorder.entry[:metadata]).to eq(client: { name: "c" })
+    end
+
+    it "never appears in a denial" do
+      ctx = context(request: request)
+      expect { invoke(ctx, registry: FakeRegistry.new) }.to raise_error(Reeve::DeniedError) { |e|
+        expect(e.message).not_to include(secret)
+      }
+    end
+
+    it "is cleared after an allowed call, a denial and a raising tool" do
+      allowed = context(request: request)
+      denied = context(request: request)
+      raised = context(request: request)
+
+      invoke(allowed)
+      expect { invoke(denied, registry: FakeRegistry.new) }.to raise_error(Reeve::DeniedError)
+      expect { invoke(raised) { raise "boom" } }.to raise_error("boom")
+
+      expect([allowed, denied, raised].map(&:request)).to all(eq({}))
+    end
+  end
+
   describe "a tool body that raises" do
     it "re-raises the tool's own error rather than dressing it as a denial" do
       expect { invoke { raise ArgumentError, "bad query" } }

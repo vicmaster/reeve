@@ -74,6 +74,7 @@ module Reeve
       @duration_ms = ((monotonic_now - started) * 1000).round
       write_entry
       context.clear_principal!
+      context.clear_request!
     end
 
     private

@@ -21,6 +21,16 @@ module Reeve
   #   abort report.to_s if report.failed? || report.nothing_checked?
   module Testing
     class << self
+      # The name a developer will recognise in a failure: the constant, not the
+      # snake_cased protocol name the ledger stores. A tool registered as a block has no
+      # constant, so its published name is the next best.
+      def label_for(tool)
+        return tool.name if tool.respond_to?(:name) && tool.name
+        return tool.tool_name.to_s if tool.respond_to?(:tool_name) && tool.tool_name
+
+        tool.to_s
+      end
+
       # The two fixture principals the compliance suite runs every tool against. Set once,
       # in the host's test helper, and both front-ends' compliance suites pick it up:
       #

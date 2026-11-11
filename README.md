@@ -639,6 +639,132 @@ FAIL CrossPrincipalLeak
   Invoice#9 (guard: InvoicePolicy, decision: allow via InvoicePolicy#index)
 ```
 
+## On the official MCP SDK
+
+```ruby
+# config/initializers/reeve.rb
+require "reeve/mcp"
+
+Reeve.configure do |config|
+  # The user you passed to MCP::Server.new(server_context: { user: current_user }):
+  config.principal_resolver = ->(context) { context.request[:server_context]&.dig(:user) }
+  # Or the subject of the token the SDK's OAuth middleware verified:
+  # config.principal_resolver = ->(context) { User.find_by(id: context.request[:auth_info]&.subject) }
+end
+```
+
+```ruby
+class InvoiceSearchTool < MCP::Tool
+  input_schema(properties: { query: { type: "string" } }, required: ["query"])
+  guard_with InvoicePolicy
+
+  def self.call(query:)
+    numbers = scoped(Invoice).where("number LIKE ?", "%#{query}%").pluck(:number)
+    MCP::Tool::Response.new([{ type: "text", text: numbers.join("\n") }])
+  end
+end
+```
+
+**`guard_with` plus `scoped`.** An SDK tool returns a finished response, not records, so
+Reeve cannot narrow it per record as it narrows a fast-mcp tool's return value. It allows or
+refuses the whole response: allowed only if the tool read through `scoped(...)` during the
+call, otherwise refused `unscoped_derived_result`. `authorize!` checks a single record before
+the tool uses it.
+
+That check is one flag per call. A tool that calls `scoped(Invoice)` and also renders
+`Invoice.find(id)` passes: Reeve proves the tool asked for scoped data, not that every value
+it rendered came from it. Fetch any other record through `authorize!`.
+
+**Block tools are tools.** `server.define_tool` builds a tool class like any other, so an
+unguarded block tool is refused `no_guard_declared`. Guard it on the class the server holds:
+
+```ruby
+server.define_tool(name: "list_invoices") do |server_context:|
+  MCP::Tool::Response.new([{ type: "text", text: scoped(Invoice).pluck(:number).join("\n") }])
+end
+server.tools["list_invoices"].guard_with InvoicePolicy
+```
+
+Each block is a new class, and Reeve keeps every tool class it sees. If you build a server
+per request, define block tools once at boot with `MCP::Tool.define`, guard them there, and
+pass them in `tools:`.
+
+**What the client receives.** Allowed: the tool's own response. Denied: a tool error
+(`isError: true`) whose text names the tool, the principal and the rule, never a record; a
+resolver that returns nil is a denial, `no_principal`. A tool that raises: the SDK's usual
+internal error. Every one of these writes exactly one ledger row.
+
+**Request data is not recorded.** The resolver reads `context.request`: the SDK's
+`server_context` and `auth_info`. They can hold a user object or a token, so neither is
+written to the ledger; the row records only the client's name and version. If you dispatch
+through `Reeve.invoke` yourself, pass the same kind of thing as `request:`, and only what
+you would want in an audit as `metadata:`.
+
+**Before deploying.** Requiring `reeve/mcp` under `:deny` refuses every SDK tool without
+`guard_with`, block tools included, on its next call. While adopting, set
+`config.unguarded_tools = :allow_with_warning`: unguarded tools run, unscoped, and each call
+logs a warning to `config.logger` and is recorded with `guard: "none"`. The matchers and the
+compliance suite take SDK tool classes as they are; no custom invoker is needed.
+
+Supported: `mcp` 1.x (verified on 1.0.0 and 1.9.0), Ruby 3.0+, with or without Rails.
+fast-mcp and the SDK cannot share a process: fast-mcp ships files at the paths the SDK loads
+its classes from, and `reeve/mcp` raises `Reeve::ConfigurationError` if fast-mcp got there
+first.
+
+## On ActionMCP
+
+```ruby
+# config/initializers/reeve.rb
+require "reeve/action_mcp"
+
+Reeve.configure do |config|
+  # The user ActionMCP's gateway authenticated for this request:
+  config.principal_resolver = ->(_context) { ActionMCP::Current.user }
+end
+```
+
+```ruby
+class InvoiceSearchTool < ApplicationMCPTool
+  property :query, type: "string", required: true
+  guard_with InvoicePolicy
+
+  def perform
+    scoped(Invoice).where("number LIKE ?", "%#{query}%").each do |invoice|
+      render(text: invoice.number)
+    end
+  end
+end
+```
+
+The same rule as on the SDK: **`guard_with` plus `scoped`**. A tool renders as it goes, so
+Reeve holds what it renders and releases it only if the call is allowed; a tool that read
+nothing through `scoped(...)` is refused `unscoped_derived_result` and nothing it rendered
+reaches the client. The check is one flag per call, with the same consequence as on the SDK:
+fetch any record you did not get from `scoped` through `authorize!`.
+
+**What the client receives.** Allowed: what the tool rendered. Denied: a tool error naming
+the tool, the principal and the rule, never a record; no user is a denial, `no_principal`.
+A tool that raises: ActionMCP's own error, unchanged. Each writes exactly one ledger row. A
+call that `request_input!` interrupts is recorded `tool_error` and releases nothing.
+
+**Calls that write no row.** A `before_perform` callback of yours that halts, or input
+ActionMCP's schema refuses, stops the call before the tool runs, so there is nothing to
+guard or record. The client gets ActionMCP's usual error for each.
+
+**Background tasks have no user.** A task-augmented call runs in ActionMCP's
+`ToolExecutionJob`, which does not set `ActionMCP::Current.user`. With the resolver above it
+is refused `no_principal` and recorded. If your sessions carry the user, resolve it from
+`context.request[:session]`. The session is request data: it reaches the resolver and is
+never recorded; the row records only the client's name and version.
+
+`ApplicationMCPTool` and any other class that calls `abstract!` is a base, not a tool: the
+compliance suite does not ask whether it is guarded. Requiring `reeve/action_mcp` under
+`:deny` refuses every unguarded ActionMCP tool, as on the SDK.
+
+Supported: `actionmcp` 0.200 to 0.203 (verified on 0.200.0 and 0.203.0), which needs Rails
+8.1 and Ruby 3.2+. The adapter reaches into ActionMCP's internals, so it refuses to load on a
+version it was not verified against; each new ActionMCP minor needs a Reeve release.
+
 ## Without Rails, or without fast-mcp
 
 The core needs neither. `Reeve.invoke` is the same envelope with the same guarantees:
@@ -839,7 +965,8 @@ out of scope, and the ledger's chain detects tampering rather than preventing it
 touched*. Keep your existing auth.
 
 Ruby 3.0+, Rails 7.0+. No runtime dependencies. The fast-mcp adapter needs Ruby 3.1+,
-because fast-mcp does.
+because fast-mcp does. The official SDK adapter needs `mcp` 1.x and runs on Ruby 3.0+. The
+ActionMCP adapter needs `actionmcp` 0.200 to 0.203, Rails 8.1 and Ruby 3.2+.
 
 ## Who built this
 

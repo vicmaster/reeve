@@ -12,16 +12,18 @@ module Reeve
   class Context
     UNKNOWN_AGENT_ID = "unknown"
 
-    attr_reader :invocation_id, :tool_name, :arguments, :metadata, :agent, :invoked_at
+    attr_reader :invocation_id, :tool_name, :arguments, :metadata, :agent, :invoked_at,
+                :request
     attr_accessor :principal
 
     def initialize(tool_name:, principal: nil, agent: nil, arguments: nil, metadata: nil,
-                   invoked_at: nil, invocation_id: nil)
+                   request: nil, invoked_at: nil, invocation_id: nil)
       @tool_name     = validate_tool_name(tool_name)
       @principal     = principal
       @agent         = build_agent(agent)
       @arguments     = symbolize(:arguments, arguments)
       @metadata      = symbolize(:metadata, metadata)
+      @request       = symbolize(:request, request).freeze
       @invoked_at    = invoked_at || Time.now
       @invocation_id = (invocation_id || SecureRandom.uuid).to_s
     end
@@ -34,6 +36,13 @@ module Reeve
     # into the next on the same thread (data-model invariant 4).
     def clear_principal!
       @principal = nil
+    end
+
+    # Request data is for the principal resolver only: the transport's server context,
+    # a verified access token, a session. It can hold a user object or a credential, so
+    # it is never part of +to_h+ or +inspect+, and it goes when the principal goes.
+    def clear_request!
+      @request = {}.freeze
     end
 
     def principal_type
