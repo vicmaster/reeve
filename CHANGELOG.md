@@ -4,7 +4,7 @@ All notable changes are recorded here. This project follows [Semantic
 Versioning](https://semver.org), with one rule specific to what it does — see
 [Versioning policy](#versioning-policy).
 
-## [Unreleased]
+## [0.10.0] - 2026-11-11
 
 Reeve now rides the official MCP SDK (`require "reeve/mcp"`) and ActionMCP
 (`require "reeve/action_mcp"`). No audit-entry contract change: it stays `4`.
